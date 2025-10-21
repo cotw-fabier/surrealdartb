@@ -1,0 +1,20 @@
+# Dart test configuration for surrealdartb
+#
+# This file configures the test runner for the SurrealDB FFI bindings.
+# The native assets experiment is required for FFI functionality.
+
+# Global test configuration
+platforms:
+  - vm
+
+# Timeouts (scenarios may take longer due to RocksDB initialization)
+timeout: 30s
+
+# Test tags
+tags:
+  scenarios:
+    timeout: 60s
+
+# Enable native assets for all tests
+test_args:
+  - --enable-experiment=native-assets

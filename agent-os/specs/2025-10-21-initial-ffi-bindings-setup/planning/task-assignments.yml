@@ -1,0 +1,21 @@
+task_assignments:
+  - task_group: "Task Group 1: Build Infrastructure and Dependencies"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 2: Core Rust FFI Implementation"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 3: Low-Level Dart FFI Bindings"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4: Async Isolate Communication Layer"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 5: Public Async API"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 6: Demonstration CLI App"
+    assigned_subagent: "ui-designer"
+
+  - task_group: "Task Group 7: Integration Testing and Gap Analysis"
+    assigned_subagent: "testing-engineer"
