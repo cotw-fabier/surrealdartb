@@ -188,36 +188,24 @@ class DatabaseIsolate {
     // Listen for commands
     commandPort.listen((message) {
       if (message is! CommandMessage) {
-        print('[ISOLATE] Invalid message format');
         return; // Invalid message format
       }
 
       final (command, responsePort) = message;
-      print('[ISOLATE] Received command: ${command.runtimeType}, dbHandle: ${dbHandle?.address ?? 'null'}');
 
       try {
-        print('[ISOLATE] Handling ${command.runtimeType}...');
         final response = _handleCommand(command, dbHandle);
-        print('[ISOLATE] Handler returned: ${response.runtimeType}');
 
         // Update handle if it was a connect command
         if (command is ConnectCommand && response is SuccessResponse) {
           // Extract the handle address from the response and convert to Pointer
           if (response.data is int) {
             dbHandle = Pointer<NativeDatabase>.fromAddress(response.data as int);
-            print('[ISOLATE] Updated dbHandle to address: ${dbHandle!.address}');
-          } else {
-            print('[ISOLATE] WARNING: ConnectCommand response.data is not int: ${response.data.runtimeType}');
           }
         }
 
         // Send response
-        print('[ISOLATE] Sending response for ${command.runtimeType}');
         responsePort.send(response);
-
-        // If it was a close command, clean up after ensuring response is sent
-        // Note: We don't close commandPort here anymore to avoid deadlock
-        // The isolate will be killed by dispose() anyway
       } catch (e, stackTrace) {
         // Catch any unexpected errors and send error response
         responsePort.send(ErrorResponse(
@@ -405,21 +393,16 @@ class DatabaseIsolate {
     CreateCommand command,
     Pointer<NativeDatabase>? dbHandle,
   ) {
-    print('[ISOLATE] _handleCreate: dbHandle is ${dbHandle?.address ?? 'NULL'}');
     if (dbHandle == null) {
       throw DatabaseException('Not connected to database');
     }
 
-    print('[ISOLATE] Encoding data: ${command.data}');
     final tablePtr = stringToCString(command.table);
     final dataJson = json.encode(command.data);
-    print('[ISOLATE] Encoded JSON: $dataJson');
     final dataPtr = stringToCString(dataJson);
 
     try {
-      print('[ISOLATE] Calling FFI dbCreate...');
       final responseHandle = bindings.dbCreate(dbHandle, tablePtr, dataPtr);
-      print('[ISOLATE] FFI dbCreate returned: ${responseHandle.address}');
       validateNonNull(responseHandle, 'Create operation failed');
 
       try {
@@ -428,9 +411,7 @@ class DatabaseIsolate {
 
         try {
           final resultsJson = cStringToDartString(resultsPtr);
-          print('[ISOLATE] CREATE results JSON: $resultsJson');
           final result = json.decode(resultsJson);
-          print('[ISOLATE] CREATE decoded result: $result');
           return SuccessResponse(result);
         } finally {
           bindings.freeString(resultsPtr);

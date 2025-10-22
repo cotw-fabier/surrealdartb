@@ -42,7 +42,7 @@ pub mod query;
 pub use error::{get_last_error, free_string, free_error_string};
 pub use database::{db_new, db_connect, db_use_ns, db_use_db, db_close};
 pub use query::{
-    db_query, response_get_results, response_has_errors, response_free,
+    db_query, response_get_results, response_has_errors, response_free, response_get_errors,
     db_select, db_create, db_update, db_delete
 };
 
@@ -105,17 +105,6 @@ mod tests {
         let table = CString::new("person").unwrap();
         let data = CString::new(r#"{"name": "John", "age": 30}"#).unwrap();
         let create_response = db_create(db_handle, table.as_ptr(), data.as_ptr());
-        if create_response.is_null() {
-            // Print error message for debugging
-            let err_ptr = get_last_error();
-            if !err_ptr.is_null() {
-                unsafe {
-                    let c_str = std::ffi::CStr::from_ptr(err_ptr);
-                    eprintln!("Create failed with error: {}", c_str.to_str().unwrap());
-                    free_error_string(err_ptr);
-                }
-            }
-        }
         assert!(!create_response.is_null(), "create should return a valid response");
         response_free(create_response);
 

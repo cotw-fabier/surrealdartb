@@ -1,0 +1,18 @@
+task_assignments:
+  - task_group: "Task Group 1: Apply Display Trait Fix"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2: Basic CRUD Validation"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 3: Rust FFI Layer Safety Audit"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4: Dart FFI & Isolate Layer Audit"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 5: Full CRUD & Error Testing"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 6: Final Documentation"
+    assigned_subagent: "api-engineer"
