@@ -3,6 +3,9 @@
 /// These tests verify that the deserialization fix (using serde_json::to_value())
 /// correctly produces clean JSON output without type wrappers.
 ///
+/// NOTE: Tests updated for direct FFI architecture (no isolates).
+/// Database operations now call FFI directly with Future wrappers for async behavior.
+///
 /// Test Focus:
 /// - SELECT returns clean JSON (no type wrappers like "Strand", "Number", etc.)
 /// - CREATE returns records with correct field values (not null)

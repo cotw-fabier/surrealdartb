@@ -16,7 +16,7 @@ import 'package:ffi/ffi.dart';
 /// must be freed using the appropriate destructor function.
 ///
 /// Lifetime: Created by db_new(), destroyed by db_close()
-/// Thread safety: Must only be accessed from the isolate that created it
+/// Thread safety: Must be accessed from a single thread or properly synchronized
 final class NativeDatabase extends Opaque {}
 
 /// Opaque handle to a native query response.
@@ -27,7 +27,7 @@ final class NativeDatabase extends Opaque {}
 /// the appropriate destructor function.
 ///
 /// Lifetime: Created by query functions, destroyed by response_free()
-/// Thread safety: Must only be accessed from the isolate that created it
+/// Thread safety: Must be accessed from a single thread or properly synchronized
 final class NativeResponse extends Opaque {}
 
 /// Type definition for native database destructor function.

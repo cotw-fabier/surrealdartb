@@ -1,7 +1,11 @@
 /// Unit tests for public Database API.
 ///
-/// These tests verify the high-level Database API works correctly.
-/// Note: Full integration tests require the Rust FFI layer.
+/// These tests verify the high-level Database API works correctly with
+/// the new direct FFI architecture (no isolates).
+///
+/// NOTE: The Database class now calls FFI functions directly instead of
+/// using isolate message passing. This provides better performance and
+/// simpler architecture while maintaining async behavior through Future wrappers.
 
 import 'package:test/test.dart';
 import 'package:surrealdartb/surrealdartb.dart';
@@ -149,7 +153,7 @@ void main() {
     });
   });
 
-  group('Database Connection (Unit Level)', () {
+  group('Database Connection (Direct FFI)', () {
     test('connect throws without path for rocksdb', () async {
       expect(
         () => Database.connect(backend: StorageBackend.rocksdb),
@@ -168,8 +172,9 @@ void main() {
     });
 
     test('Database.connect validates parameters', () async {
-      // These tests validate parameter checking before FFI calls
-      // They should pass even without Rust layer
+      // These tests validate parameter checking before FFI calls.
+      // With direct FFI architecture, validation happens immediately
+      // rather than being deferred to isolate.
 
       expect(
         () => Database.connect(
@@ -179,12 +184,57 @@ void main() {
         throwsArgumentError,
       );
     });
-  }, skip: 'Full connection tests require Rust FFI layer');
+  });
 
-  group('Database Operations', () {
+  group('Database Operations (Direct FFI)', () {
+    // These tests will work once the direct FFI implementation is complete.
+    // They verify that operations throw StateError when database is closed,
+    // which should work regardless of isolate vs direct FFI architecture.
+
     test('operations throw StateError when closed', () async {
-      // This test would require a real database connection
-      // Skipped until Rust layer is available
-    }, skip: 'Requires Rust FFI layer');
+      // Create and immediately close a database
+      final db = await Database.connect(
+        backend: StorageBackend.memory,
+        namespace: 'test',
+        database: 'test',
+      );
+      await db.close();
+
+      // All operations should throw StateError when database is closed
+      expect(
+        () => db.query('SELECT * FROM test'),
+        throwsStateError,
+      );
+
+      expect(
+        () => db.select('test'),
+        throwsStateError,
+      );
+
+      expect(
+        () => db.create('test', {'data': 'value'}),
+        throwsStateError,
+      );
+
+      expect(
+        () => db.update('test:id', {'data': 'value'}),
+        throwsStateError,
+      );
+
+      expect(
+        () => db.delete('test:id'),
+        throwsStateError,
+      );
+
+      expect(
+        () => db.useNamespace('new_ns'),
+        throwsStateError,
+      );
+
+      expect(
+        () => db.useDatabase('new_db'),
+        throwsStateError,
+      );
+    });
   });
 }

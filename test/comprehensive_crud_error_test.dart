@@ -10,6 +10,10 @@
 /// - Namespace/database switching
 /// - Memory stability with large datasets
 ///
+/// NOTE: Tests updated for direct FFI architecture (no isolates).
+/// Database operations now call FFI directly with Future wrappers for async behavior.
+/// This eliminates isolate message passing overhead while maintaining async behavior.
+///
 /// Total tests in this file: 8 strategic tests
 /// Combined with existing tests from Task Group 2: 4 tests
 /// Total feature-specific tests: 12 tests

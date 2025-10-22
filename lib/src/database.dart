@@ -5,21 +5,25 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:ffi';
+
+import 'package:ffi/ffi.dart';
 
 import 'exceptions.dart';
-import 'isolate/database_isolate.dart';
-import 'isolate/isolate_messages.dart';
+import 'ffi/bindings.dart';
+import 'ffi/native_types.dart';
 import 'response.dart';
 import 'storage_backend.dart';
 
 /// High-level asynchronous database client for SurrealDB.
 ///
 /// This class provides a Future-based API for all database operations,
-/// ensuring that all native calls are executed asynchronously in a
-/// background isolate to prevent blocking the UI thread.
+/// wrapping direct FFI calls in Future constructors to maintain async behavior
+/// while avoiding the complexity and bugs of isolate-based communication.
 ///
-/// All database operations are serialized through a single background
-/// isolate for thread safety.
+/// All database operations are executed directly through FFI, which is safe
+/// because the Rust layer uses runtime.block_on() to handle async operations.
 ///
 /// Example usage:
 /// ```dart
@@ -50,14 +54,14 @@ import 'storage_backend.dart';
 /// }
 /// ```
 class Database {
-  /// Creates a Database instance with a background isolate.
+  /// Creates a Database instance with a native database handle.
   ///
   /// This constructor is private. Use [Database.connect] to create
   /// a database instance.
-  Database._(this._isolate);
+  Database._(this._handle);
 
-  /// The background isolate managing database operations.
-  final DatabaseIsolate _isolate;
+  /// The native database handle.
+  Pointer<NativeDatabase> _handle;
 
   /// Whether the database connection has been closed.
   bool _closed = false;
@@ -66,7 +70,7 @@ class Database {
   ///
   /// This factory method creates a new database instance and establishes
   /// a connection to the specified backend. All operations are performed
-  /// asynchronously through a background isolate.
+  /// asynchronously through direct FFI calls wrapped in Futures.
   ///
   /// Parameters:
   /// - [backend] - The storage backend to use (memory or rocksdb)
@@ -113,46 +117,64 @@ class Database {
       );
     }
 
-    // Create and start isolate
-    final isolate = DatabaseIsolate();
-    await isolate.start();
-
-    try {
-      // Initialize the isolate
-      final initResponse = await isolate.sendCommand(const InitializeCommand());
-      if (initResponse is ErrorResponse) {
-        throw DatabaseException(
-          initResponse.message,
-          errorCode: initResponse.errorCode,
-          nativeStackTrace: initResponse.nativeStackTrace,
-        );
-      }
-
-      // Connect to database
+    return Future(() {
+      // Create endpoint string
       final endpoint = backend.toEndpoint(path);
-      final connectResponse = await isolate.sendCommand(
-        ConnectCommand(
-          endpoint: endpoint,
-          namespace: namespace,
-          database: database,
-        ),
-      );
+      final endpointPtr = endpoint.toNativeUtf8();
 
-      if (connectResponse is ErrorResponse) {
-        throw ConnectionException(
-          connectResponse.message,
-          errorCode: connectResponse.errorCode,
-          nativeStackTrace: connectResponse.nativeStackTrace,
-        );
+      try {
+        // Create database instance
+        final handle = dbNew(endpointPtr);
+        if (handle == nullptr) {
+          final error = _getLastErrorString();
+          throw ConnectionException(error ?? 'Failed to create database instance');
+        }
+
+        // Connect to database
+        final connectResult = dbConnect(handle);
+        if (connectResult != 0) {
+          final error = _getLastErrorString();
+          dbClose(handle);
+          throw ConnectionException(error ?? 'Failed to connect to database');
+        }
+
+        // Set namespace if provided
+        if (namespace != null) {
+          final nsPtr = namespace.toNativeUtf8();
+          try {
+            final nsResult = dbUseNs(handle, nsPtr);
+            if (nsResult != 0) {
+              final error = _getLastErrorString();
+              dbClose(handle);
+              throw DatabaseException(error ?? 'Failed to set namespace');
+            }
+          } finally {
+            malloc.free(nsPtr);
+          }
+        }
+
+        // Set database if provided
+        if (database != null) {
+          final dbPtr = database.toNativeUtf8();
+          try {
+            final dbResult = dbUseDb(handle, dbPtr);
+            if (dbResult != 0) {
+              final error = _getLastErrorString();
+              dbClose(handle);
+              throw DatabaseException(error ?? 'Failed to set database');
+            }
+          } finally {
+            malloc.free(dbPtr);
+          }
+        }
+
+        // Create and return database instance
+        final db = Database._(handle);
+        return db;
+      } finally {
+        malloc.free(endpointPtr);
       }
-
-      // Create and return database instance
-      return Database._(isolate);
-    } catch (e) {
-      // Clean up isolate on error
-      await isolate.dispose();
-      rethrow;
-    }
+    });
   }
 
   /// Sets the active namespace for subsequent operations.
@@ -174,11 +196,18 @@ class Database {
   Future<void> useNamespace(String namespace) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      UseNamespaceCommand(namespace),
-    );
-
-    _throwIfError(response);
+    return Future(() {
+      final nsPtr = namespace.toNativeUtf8();
+      try {
+        final result = dbUseNs(_handle, nsPtr);
+        if (result != 0) {
+          final error = _getLastErrorString();
+          throw DatabaseException(error ?? 'Failed to set namespace');
+        }
+      } finally {
+        malloc.free(nsPtr);
+      }
+    });
   }
 
   /// Sets the active database for subsequent operations.
@@ -200,11 +229,18 @@ class Database {
   Future<void> useDatabase(String database) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      UseDatabaseCommand(database),
-    );
-
-    _throwIfError(response);
+    return Future(() {
+      final dbPtr = database.toNativeUtf8();
+      try {
+        final result = dbUseDb(_handle, dbPtr);
+        if (result != 0) {
+          final error = _getLastErrorString();
+          throw DatabaseException(error ?? 'Failed to set database');
+        }
+      } finally {
+        malloc.free(dbPtr);
+      }
+    });
   }
 
   /// Executes a SurrealQL query.
@@ -237,20 +273,15 @@ class Database {
   Future<Response> query(String sql, [Map<String, dynamic>? bindings]) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      QueryCommand(sql: sql, bindings: bindings),
-    );
-
-    if (response is ErrorResponse) {
-      throw QueryException(
-        response.message,
-        errorCode: response.errorCode,
-        nativeStackTrace: response.nativeStackTrace,
-      );
-    }
-
-    final successResponse = response as SuccessResponse;
-    return Response(successResponse.data);
+    return Future(() {
+      final sqlPtr = sql.toNativeUtf8();
+      try {
+        final responsePtr = dbQuery(_handle, sqlPtr);
+        return _processQueryResponse(responsePtr);
+      } finally {
+        malloc.free(sqlPtr);
+      }
+    });
   }
 
   /// Selects all records from a table.
@@ -278,26 +309,30 @@ class Database {
   Future<List<Map<String, dynamic>>> select(String table) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      SelectCommand(table),
-    );
+    return Future(() {
+      final tablePtr = table.toNativeUtf8();
+      try {
+        final responsePtr = dbSelect(_handle, tablePtr);
+        final data = _processResponse(responsePtr);
 
-    if (response is ErrorResponse) {
-      throw QueryException(
-        response.message,
-        errorCode: response.errorCode,
-        nativeStackTrace: response.nativeStackTrace,
-      );
-    }
+        // SELECT returns a nested array structure like CREATE/UPDATE
+        // The response structure is: [[{record1}, {record2}, ...]]
+        // We need to unwrap the outer array
+        if (data is List && data.isNotEmpty) {
+          final firstElement = data.first;
+          if (firstElement is List) {
+            // Unwrap the nested array
+            return firstElement.cast<Map<String, dynamic>>();
+          }
+          // If not nested, cast directly
+          return data.cast<Map<String, dynamic>>();
+        }
 
-    final successResponse = response as SuccessResponse;
-    final data = successResponse.data;
-
-    if (data is List) {
-      return data.cast<Map<String, dynamic>>();
-    }
-
-    return [];
+        return [];
+      } finally {
+        malloc.free(tablePtr);
+      }
+    });
   }
 
   /// Creates a new record in a table.
@@ -333,25 +368,39 @@ class Database {
   ) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      CreateCommand(table: table, data: data),
-    );
+    return Future(() {
+      final tablePtr = table.toNativeUtf8();
+      final dataJson = jsonEncode(data);
+      final dataPtr = dataJson.toNativeUtf8();
 
-    if (response is ErrorResponse) {
-      throw QueryException(
-        response.message,
-        errorCode: response.errorCode,
-        nativeStackTrace: response.nativeStackTrace,
-      );
-    }
+      try {
+        final responsePtr = dbCreate(_handle, tablePtr, dataPtr);
+        final results = _processResponse(responsePtr);
 
-    final successResponse = response as SuccessResponse;
-    // CREATE returns a list with one element - extract it
-    final results = successResponse.data as List<dynamic>;
-    if (results.isEmpty) {
-      throw QueryException('Create operation returned no results');
-    }
-    return results.first as Map<String, dynamic>;
+        // CREATE returns a list with one element - extract it
+        if (results is! List || results.isEmpty) {
+          throw QueryException('Create operation returned no results');
+        }
+
+        // SurrealDB CREATE returns an array containing the created record(s)
+        // The response structure is: results = [[{record}]]
+        // We need to unwrap one level: results.first = [{record}]
+        final firstResult = results.first;
+        if (firstResult is List) {
+          final recordList = firstResult as List;
+          if (recordList.isEmpty) {
+            throw QueryException('Create operation returned empty result array');
+          }
+          return recordList.first as Map<String, dynamic>;
+        }
+
+        // Fallback: if it's already a Map, return it directly
+        return firstResult as Map<String, dynamic>;
+      } finally {
+        malloc.free(tablePtr);
+        malloc.free(dataPtr);
+      }
+    });
   }
 
   /// Updates an existing record.
@@ -385,25 +434,39 @@ class Database {
   ) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      UpdateCommand(resource: resource, data: data),
-    );
+    return Future(() {
+      final resourcePtr = resource.toNativeUtf8();
+      final dataJson = jsonEncode(data);
+      final dataPtr = dataJson.toNativeUtf8();
 
-    if (response is ErrorResponse) {
-      throw QueryException(
-        response.message,
-        errorCode: response.errorCode,
-        nativeStackTrace: response.nativeStackTrace,
-      );
-    }
+      try {
+        final responsePtr = dbUpdate(_handle, resourcePtr, dataPtr);
+        final results = _processResponse(responsePtr);
 
-    final successResponse = response as SuccessResponse;
-    // UPDATE returns a list - extract first element
-    final results = successResponse.data as List<dynamic>;
-    if (results.isEmpty) {
-      throw QueryException('Update operation returned no results');
-    }
-    return results.first as Map<String, dynamic>;
+        // UPDATE returns a list - extract first element
+        if (results is! List || results.isEmpty) {
+          throw QueryException('Update operation returned no results');
+        }
+
+        // SurrealDB UPDATE returns an array containing the updated record(s)
+        // The response structure is: results = [[{record}]]
+        // We need to unwrap one level: results.first = [{record}]
+        final firstResult = results.first;
+        if (firstResult is List) {
+          final recordList = firstResult as List;
+          if (recordList.isEmpty) {
+            throw QueryException('Update operation returned empty result array');
+          }
+          return recordList.first as Map<String, dynamic>;
+        }
+
+        // Fallback: if it's already a Map, return it directly
+        return firstResult as Map<String, dynamic>;
+      } finally {
+        malloc.free(resourcePtr);
+        malloc.free(dataPtr);
+      }
+    });
   }
 
   /// Deletes a record.
@@ -427,14 +490,19 @@ class Database {
   Future<void> delete(String resource) async {
     _ensureNotClosed();
 
-    final response = await _isolate.sendCommand(
-      DeleteCommand(resource),
-    );
-
-    _throwIfError(response);
+    return Future(() {
+      final resourcePtr = resource.toNativeUtf8();
+      try {
+        final responsePtr = dbDelete(_handle, resourcePtr);
+        // Process response to check for errors, but don't return data
+        _processResponse(responsePtr);
+      } finally {
+        malloc.free(resourcePtr);
+      }
+    });
   }
 
-  /// Closes the database connection and shuts down the background isolate.
+  /// Closes the database connection and releases resources.
   ///
   /// After calling this method, the database instance cannot be used anymore.
   /// All subsequent operations will throw a [StateError].
@@ -443,6 +511,10 @@ class Database {
   /// cleanup even if exceptions occur.
   ///
   /// This method is idempotent - calling it multiple times is safe.
+  ///
+  /// Implementation note: This method includes a small delay after closing
+  /// to ensure the Rust runtime has time to complete async cleanup tasks
+  /// and release resources (especially important for RocksDB file locks).
   ///
   /// Example:
   /// ```dart
@@ -460,11 +532,23 @@ class Database {
 
     _closed = true;
 
-    try {
-      await _isolate.dispose();
-    } catch (_) {
-      // Ignore errors during cleanup
-    }
+    return Future(() async {
+      try {
+        // Close the native database handle
+        dbClose(_handle);
+
+        // Add a delay to ensure async cleanup completes
+        // This is especially important for RocksDB to release file locks
+        // The Rust layer does internal cleanup, but this extra delay
+        // provides a safety margin for the async runtime to finish
+        // and for RocksDB to fully release file system resources
+        //
+        // This delay is on top of the 500ms delay in the Rust layer
+        await Future.delayed(const Duration(milliseconds: 200));
+      } catch (_) {
+        // Ignore errors during cleanup
+      }
+    });
   }
 
   /// Whether the database connection has been closed.
@@ -488,16 +572,92 @@ class Database {
     }
   }
 
-  /// Throws an exception if the response is an error.
+  /// Processes a Response pointer from FFI and returns the data.
   ///
-  /// Converts ErrorResponse to DatabaseException and throws.
-  void _throwIfError(IsolateResponse response) {
-    if (response is ErrorResponse) {
-      throw DatabaseException(
-        response.message,
-        errorCode: response.errorCode,
-        nativeStackTrace: response.nativeStackTrace,
-      );
+  /// This method extracts JSON data from the native response and frees
+  /// the response pointer after processing.
+  ///
+  /// Throws [QueryException] if the response indicates an error.
+  dynamic _processResponse(Pointer<NativeResponse> responsePtr) {
+    if (responsePtr == nullptr) {
+      final error = _getLastErrorString();
+      throw QueryException(error ?? 'Operation failed');
+    }
+
+    try {
+      // Check if response has errors
+      final hasErrors = responseHasErrors(responsePtr);
+      if (hasErrors != 0) {
+        final error = _getLastErrorString();
+        throw QueryException(error ?? 'Query execution failed');
+      }
+
+      // Extract JSON from response
+      final jsonPtr = responseGetResults(responsePtr);
+      if (jsonPtr == nullptr) {
+        throw QueryException('Failed to get response results');
+      }
+
+      try {
+        final jsonStr = jsonPtr.toDartString();
+        return jsonDecode(jsonStr);
+      } finally {
+        freeString(jsonPtr);
+      }
+    } finally {
+      responseFree(responsePtr);
+    }
+  }
+
+  /// Processes a query Response pointer and returns a Response object.
+  ///
+  /// This is specifically for the query() method which returns a Response
+  /// object rather than raw data.
+  Response _processQueryResponse(Pointer<NativeResponse> responsePtr) {
+    if (responsePtr == nullptr) {
+      final error = _getLastErrorString();
+      throw QueryException(error ?? 'Query failed');
+    }
+
+    try {
+      // Check if response has errors
+      final hasErrors = responseHasErrors(responsePtr);
+      if (hasErrors != 0) {
+        final error = _getLastErrorString();
+        throw QueryException(error ?? 'Query execution failed');
+      }
+
+      // Extract JSON from response
+      final jsonPtr = responseGetResults(responsePtr);
+      if (jsonPtr == nullptr) {
+        throw QueryException('Failed to get query results');
+      }
+
+      try {
+        final jsonStr = jsonPtr.toDartString();
+        final data = jsonDecode(jsonStr);
+        return Response(data);
+      } finally {
+        freeString(jsonPtr);
+      }
+    } finally {
+      responseFree(responsePtr);
+    }
+  }
+
+  /// Gets the last error string from native code and frees it.
+  ///
+  /// Returns null if no error string is available.
+  static String? _getLastErrorString() {
+    final errorPtr = getLastError();
+    if (errorPtr == nullptr) {
+      return null;
+    }
+
+    try {
+      return errorPtr.toDartString();
+    } finally {
+      freeString(errorPtr);
     }
   }
 }

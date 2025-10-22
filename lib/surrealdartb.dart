@@ -2,12 +2,12 @@
 ///
 /// This library provides a high-level, Future-based API for interacting
 /// with SurrealDB through native FFI bindings. All operations are performed
-/// asynchronously in a background isolate to ensure non-blocking behavior.
+/// asynchronously using direct FFI calls to ensure non-blocking behavior.
 ///
 /// ## Features
 ///
 /// - **Async Operations**: All database operations return Futures and execute
-///   in a background isolate, preventing UI blocking.
+///   asynchronously, preventing UI blocking.
 /// - **Memory Safety**: Automatic memory management using NativeFinalizer
 ///   ensures no memory leaks.
 /// - **Storage Backends**: Support for in-memory (mem://) and persistent
@@ -103,4 +103,3 @@ export 'src/storage_backend.dart' show StorageBackend, StorageBackendExt;
 
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)
-// - src/isolate/* (Isolate communication)

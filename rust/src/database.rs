@@ -233,12 +233,50 @@ pub extern "C" fn db_use_db(handle: *mut Database, db: *const c_char) -> i32 {
 /// - After calling this function, the handle is invalid and must not be used
 /// - Passing null is safe and does nothing
 /// - Do not call this function twice on the same pointer
+///
+/// # Implementation Details
+/// This function performs graceful shutdown by:
+/// 1. Taking ownership of the Database from the raw pointer
+/// 2. Giving the async runtime time to flush pending operations
+/// 3. Explicitly dropping the database to trigger cleanup
+/// 4. Allowing the runtime to process any final cleanup tasks
+///
+/// This ensures RocksDB file locks and other resources are properly released
+/// before the function returns, preventing "lock held by current process" errors
+/// when reconnecting to the same database path.
 #[no_mangle]
 pub extern "C" fn db_close(handle: *mut Database) {
     let _ = panic::catch_unwind(|| {
         if !handle.is_null() {
             unsafe {
-                let _ = Box::from_raw(handle);
+                // Take ownership of the Database
+                let db = Box::from_raw(handle);
+
+                // Get the runtime to ensure async cleanup can complete
+                let runtime = get_runtime();
+
+                // Explicitly drop the database in an async context
+                // This ensures any background tasks spawned by the drop handler
+                // have a chance to run before we return
+                let _ = runtime.block_on(async {
+                    // Drop the database first
+                    drop(db);
+
+                    // Critical: Give the runtime substantial time to process cleanup tasks
+                    // SurrealDB's RocksDB backend spawns background tasks for shutdown
+                    // that must complete before the file lock is released
+                    //
+                    // We use a long delay because:
+                    // 1. RocksDB needs to flush WAL and memtables
+                    // 2. Background cleanup tasks need to finish
+                    // 3. File system locks take time to release
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                    // Yield multiple times to ensure all pending tasks complete
+                    for _ in 0..10 {
+                        tokio::task::yield_now().await;
+                    }
+                });
             }
         }
     });

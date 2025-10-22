@@ -47,6 +47,9 @@ class Response {
   /// If the query returned no results, returns an empty list.
   /// If the result is a single record, wraps it in a list.
   ///
+  /// This method also unwraps nested array structures that SurrealDB
+  /// sometimes returns (e.g., [[{record}]] -> [{record}]).
+  ///
   /// Example:
   /// ```dart
   /// final results = response.getResults();
@@ -62,7 +65,17 @@ class Response {
     }
 
     if (_data is List) {
-      return (_data as List).cast<Map<String, dynamic>>();
+      final list = _data as List;
+
+      // Check if this is a nested array structure like [[{records}]]
+      // which SurrealDB sometimes returns
+      if (list.isNotEmpty && list.first is List) {
+        final innerList = list.first as List;
+        return innerList.cast<Map<String, dynamic>>();
+      }
+
+      // Otherwise cast directly
+      return list.cast<Map<String, dynamic>>();
     }
 
     if (_data is Map<String, dynamic>) {

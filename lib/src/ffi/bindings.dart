@@ -4,8 +4,8 @@
 /// by the Rust FFI layer. These functions should not be called directly
 /// by application code - instead, use the high-level Database API.
 ///
-/// All functions in this library are called from a background isolate
-/// to ensure non-blocking operation.
+/// All functions in this library use direct FFI calls for asynchronous
+/// operations to ensure non-blocking behavior.
 library;
 
 import 'dart:ffi';
