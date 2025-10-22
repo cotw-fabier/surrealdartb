@@ -77,6 +77,12 @@ typedef NativeDbUseDb = Int32 Function(
 /// Closes the database connection and frees resources.
 typedef NativeDbClose = Void Function(Pointer<NativeDatabase> handle);
 
+/// Type definition for transaction operation function.
+///
+/// Begins, commits, or rolls back a transaction.
+/// Returns 0 on success, -1 on failure.
+typedef NativeDbTransaction = Int32 Function(Pointer<NativeDatabase> handle);
+
 /// Type definition for query execution function.
 ///
 /// Executes a SurrealQL query and returns a response handle.
@@ -93,6 +99,15 @@ typedef NativeDbQuery = Pointer<NativeResponse> Function(
 typedef NativeDbSelect = Pointer<NativeResponse> Function(
   Pointer<NativeDatabase> handle,
   Pointer<Utf8> table,
+);
+
+/// Type definition for get operation.
+///
+/// Gets a specific record by resource identifier.
+/// Returns null on failure.
+typedef NativeDbGet = Pointer<NativeResponse> Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> resource,
 );
 
 /// Type definition for create operation.
@@ -124,6 +139,49 @@ typedef NativeDbDelete = Pointer<NativeResponse> Function(
   Pointer<Utf8> resource,
 );
 
+/// Type definition for insert operation.
+///
+/// Inserts a record with content.
+/// Returns null on failure.
+typedef NativeDbInsert = Pointer<NativeResponse> Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> resource,
+  Pointer<Utf8> data,
+);
+
+/// Type definition for signin operation.
+///
+/// Signs in with credentials and returns a JWT token.
+/// Returns null on failure.
+typedef NativeDbSignin = Pointer<Utf8> Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> credentialsJson,
+);
+
+/// Type definition for signup operation.
+///
+/// Signs up a new user and returns a JWT token.
+/// Returns null on failure.
+typedef NativeDbSignup = Pointer<Utf8> Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> credentialsJson,
+);
+
+/// Type definition for authenticate operation.
+///
+/// Authenticates with an existing JWT token.
+/// Returns 0 on success, negative error code on failure.
+typedef NativeDbAuthenticate = Int32 Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> token,
+);
+
+/// Type definition for invalidate operation.
+///
+/// Invalidates the current authentication session.
+/// Returns 0 on success, negative error code on failure.
+typedef NativeDbInvalidate = Int32 Function(Pointer<NativeDatabase> handle);
+
 /// Type definition for getting query results.
 ///
 /// Returns a JSON string containing query results.
@@ -154,3 +212,38 @@ typedef NativeGetLastError = Pointer<Utf8> Function();
 ///
 /// Frees a string allocated by the native layer.
 typedef NativeFreeString = Void Function(Pointer<Utf8> ptr);
+
+/// Type definition for set parameter operation.
+///
+/// Sets a query parameter for the connection.
+/// Returns 0 on success, negative error code on failure.
+typedef NativeDbSet = Int32 Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> name,
+  Pointer<Utf8> value,
+);
+
+/// Type definition for unset parameter operation.
+///
+/// Removes a query parameter from the connection.
+/// Returns 0 on success, negative error code on failure.
+typedef NativeDbUnset = Int32 Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> name,
+);
+
+/// Type definition for function execution operation.
+///
+/// Executes a SurrealQL function with optional arguments.
+/// Returns null on failure.
+typedef NativeDbRun = Pointer<NativeResponse> Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> function,
+  Pointer<Utf8> args,
+);
+
+/// Type definition for version query operation.
+///
+/// Returns the database version string.
+/// Caller must free the returned string.
+typedef NativeDbVersion = Pointer<Utf8> Function(Pointer<NativeDatabase> handle);

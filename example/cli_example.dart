@@ -9,8 +9,10 @@ library;
 
 import 'dart:io';
 
+import 'scenarios/authentication.dart';
 import 'scenarios/connect_verify.dart';
 import 'scenarios/crud_operations.dart';
+import 'scenarios/parameters_functions.dart';
 import 'scenarios/storage_comparison.dart';
 
 /// Main entry point for the CLI example application.
@@ -35,11 +37,17 @@ void main() async {
       case '3':
         await _runScenario('Storage Comparison', runStorageComparisonScenario);
       case '4':
+        await _runScenario(
+            'Authentication Features', runAuthenticationScenario);
+      case '5':
+        await _runScenario(
+            'Parameters & Functions', runParametersFunctionsScenario);
+      case '6':
         print('\nThank you for using SurrealDB Dart FFI bindings!');
         print('Goodbye!\n');
         running = false;
       default:
-        print('\n✗ Invalid choice. Please enter a number between 1 and 4.\n');
+        print('\n✗ Invalid choice. Please enter a number between 1 and 6.\n');
     }
   }
 }
@@ -69,17 +77,28 @@ void _printMenu() {
   print('│    • Execute INFO query to verify connection              │');
   print('│                                                            │');
   print('│ 2. CRUD Operations Demonstration                          │');
-  print('│    • Create a new record                                  │');
-  print('│    • Query and read records                               │');
-  print('│    • Update existing record                               │');
-  print('│    • Delete record                                        │');
+  print('│    • Create, read, update, delete records                 │');
+  print('│    • Query execution and result handling                  │');
+  print('│    • Type-safe operations                                 │');
   print('│                                                            │');
   print('│ 3. Storage Backend Comparison                             │');
   print('│    • Compare in-memory (mem://) storage                   │');
   print('│    • Compare persistent (RocksDB) storage                 │');
   print('│    • Demonstrate data persistence behavior                │');
   print('│                                                            │');
-  print('│ 4. Exit                                                    │');
+  print('│ 4. Authentication Features (NEW!)                         │');
+  print('│    • Sign in with different credential types              │');
+  print('│    • Sign up new users                                    │');
+  print('│    • JWT token authentication                             │');
+  print('│    • Session invalidation                                 │');
+  print('│                                                            │');
+  print('│ 5. Parameters & Functions (NEW!)                          │');
+  print('│    • Set and use query parameters                         │');
+  print('│    • Execute built-in SurrealQL functions                 │');
+  print('│    • Define and run custom functions                      │');
+  print('│    • Get database version                                 │');
+  print('│                                                            │');
+  print('│ 6. Exit                                                    │');
   print('└────────────────────────────────────────────────────────────┘');
   print('');
 }
@@ -89,7 +108,7 @@ void _printMenu() {
 /// Prompts the user for input and returns the choice as a string.
 /// Returns an empty string if input is null.
 String _getUserChoice() {
-  stdout.write('Enter your choice (1-4): ');
+  stdout.write('Enter your choice (1-6): ');
   final input = stdin.readLineSync();
   return input?.trim() ?? '';
 }

@@ -97,9 +97,30 @@ export 'src/exceptions.dart'
         DatabaseException,
         ConnectionException,
         QueryException,
-        AuthenticationException;
+        AuthenticationException,
+        TransactionException,
+        LiveQueryException,
+        ParameterException,
+        ExportException,
+        ImportException;
 export 'src/response.dart' show Response;
 export 'src/storage_backend.dart' show StorageBackend, StorageBackendExt;
+export 'src/types/types.dart'
+    show
+        RecordId,
+        Datetime,
+        SurrealDuration,
+        PatchOp,
+        PatchOperation,
+        Jwt,
+        Credentials,
+        RootCredentials,
+        NamespaceCredentials,
+        DatabaseCredentials,
+        ScopeCredentials,
+        RecordCredentials,
+        Notification,
+        NotificationAction;
 
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)

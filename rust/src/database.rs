@@ -223,6 +223,159 @@ pub extern "C" fn db_use_db(handle: *mut Database, db: *const c_char) -> i32 {
     }
 }
 
+/// Begin a transaction
+///
+/// # Arguments
+/// * `handle` - Pointer to Database instance
+///
+/// # Returns
+/// 0 on success, -1 on failure
+///
+/// # Safety
+/// - handle must be a valid pointer obtained from db_new()
+/// - Passing null returns -1
+/// - Must call db_commit or db_rollback after successful begin
+///
+/// # Errors
+/// Returns -1 and sets last error if:
+/// - handle is null
+/// - BEGIN TRANSACTION fails
+///
+/// # Implementation Note
+/// This executes a "BEGIN TRANSACTION" statement to start a transaction.
+/// All subsequent operations on this handle will be part of the transaction
+/// until db_commit or db_rollback is called.
+#[no_mangle]
+pub extern "C" fn db_begin(handle: *mut Database) -> i32 {
+    match panic::catch_unwind(|| {
+        if handle.is_null() {
+            set_last_error("Database handle cannot be null");
+            return -1;
+        }
+
+        let db = unsafe { &mut *handle };
+        let runtime = get_runtime();
+
+        match runtime.block_on(async {
+            db.inner.query("BEGIN TRANSACTION").await
+        }) {
+            Ok(_) => 0,
+            Err(e) => {
+                set_last_error(&format!("Failed to begin transaction: {}", e));
+                -1
+            }
+        }
+    }) {
+        Ok(result) => result,
+        Err(_) => {
+            set_last_error("Panic occurred in db_begin");
+            -1
+        }
+    }
+}
+
+/// Commit a transaction
+///
+/// # Arguments
+/// * `handle` - Pointer to Database instance
+///
+/// # Returns
+/// 0 on success, -1 on failure
+///
+/// # Safety
+/// - handle must be a valid pointer obtained from db_new()
+/// - Passing null returns -1
+/// - Must have called db_begin before calling this function
+///
+/// # Errors
+/// Returns -1 and sets last error if:
+/// - handle is null
+/// - COMMIT TRANSACTION fails
+/// - No transaction was started
+///
+/// # Implementation Note
+/// This executes a "COMMIT TRANSACTION" statement to commit the current transaction.
+/// If the commit fails, the transaction remains active and should be rolled back.
+#[no_mangle]
+pub extern "C" fn db_commit(handle: *mut Database) -> i32 {
+    match panic::catch_unwind(|| {
+        if handle.is_null() {
+            set_last_error("Database handle cannot be null");
+            return -1;
+        }
+
+        let db = unsafe { &mut *handle };
+        let runtime = get_runtime();
+
+        match runtime.block_on(async {
+            db.inner.query("COMMIT TRANSACTION").await
+        }) {
+            Ok(_) => 0,
+            Err(e) => {
+                set_last_error(&format!("Failed to commit transaction: {}", e));
+                -1
+            }
+        }
+    }) {
+        Ok(result) => result,
+        Err(_) => {
+            set_last_error("Panic occurred in db_commit");
+            -1
+        }
+    }
+}
+
+/// Rollback a transaction
+///
+/// # Arguments
+/// * `handle` - Pointer to Database instance
+///
+/// # Returns
+/// 0 on success, -1 on failure
+///
+/// # Safety
+/// - handle must be a valid pointer obtained from db_new()
+/// - Passing null returns -1
+/// - Must have called db_begin before calling this function
+///
+/// # Errors
+/// Returns -1 and sets last error if:
+/// - handle is null
+/// - CANCEL TRANSACTION fails
+/// - No transaction was started
+///
+/// # Implementation Note
+/// This executes a "CANCEL TRANSACTION" statement to rollback the current transaction.
+/// All changes made within the transaction are discarded.
+#[no_mangle]
+pub extern "C" fn db_rollback(handle: *mut Database) -> i32 {
+    match panic::catch_unwind(|| {
+        if handle.is_null() {
+            set_last_error("Database handle cannot be null");
+            return -1;
+        }
+
+        let db = unsafe { &mut *handle };
+        let runtime = get_runtime();
+
+        match runtime.block_on(async {
+            db.inner.query("CANCEL TRANSACTION").await
+        }) {
+            Ok(_) => 0,
+            Err(e) => {
+                set_last_error(&format!("Failed to rollback transaction: {}", e));
+                -1
+            }
+        }
+    }) {
+        Ok(result) => result,
+        Err(_) => {
+            set_last_error("Panic occurred in db_rollback");
+            -1
+        }
+    }
+}
+
 /// Close and free the database instance
 ///
 /// # Arguments
@@ -321,5 +474,51 @@ mod tests {
     fn test_db_close_null_handle() {
         // Should not panic
         db_close(std::ptr::null_mut());
+    }
+
+    #[test]
+    fn test_transaction_begin_commit() {
+        let endpoint = std::ffi::CString::new("mem://").unwrap();
+        let handle = db_new(endpoint.as_ptr());
+        assert!(!handle.is_null());
+
+        let ns = std::ffi::CString::new("test").unwrap();
+        assert_eq!(db_use_ns(handle, ns.as_ptr()), 0);
+
+        let db = std::ffi::CString::new("test").unwrap();
+        assert_eq!(db_use_db(handle, db.as_ptr()), 0);
+
+        // Begin transaction
+        let result = db_begin(handle);
+        assert_eq!(result, 0, "BEGIN TRANSACTION should succeed");
+
+        // Commit transaction
+        let result = db_commit(handle);
+        assert_eq!(result, 0, "COMMIT TRANSACTION should succeed");
+
+        db_close(handle);
+    }
+
+    #[test]
+    fn test_transaction_begin_rollback() {
+        let endpoint = std::ffi::CString::new("mem://").unwrap();
+        let handle = db_new(endpoint.as_ptr());
+        assert!(!handle.is_null());
+
+        let ns = std::ffi::CString::new("test").unwrap();
+        assert_eq!(db_use_ns(handle, ns.as_ptr()), 0);
+
+        let db = std::ffi::CString::new("test").unwrap();
+        assert_eq!(db_use_db(handle, db.as_ptr()), 0);
+
+        // Begin transaction
+        let result = db_begin(handle);
+        assert_eq!(result, 0, "BEGIN TRANSACTION should succeed");
+
+        // Rollback transaction
+        let result = db_rollback(handle);
+        assert_eq!(result, 0, "CANCEL TRANSACTION should succeed");
+
+        db_close(handle);
     }
 }

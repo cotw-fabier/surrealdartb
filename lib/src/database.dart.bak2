@@ -938,7 +938,6 @@ class Database {
         freeString(versionPtr);
       }
     });
-  }
 
   /// Executes a transaction with automatic commit/rollback.
   ///
@@ -1015,7 +1014,7 @@ class Database {
       }
     });
   }
-
+  }
 
   /// Closes the database connection and releases resources.
   ///

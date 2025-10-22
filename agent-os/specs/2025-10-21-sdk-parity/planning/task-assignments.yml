@@ -1,0 +1,39 @@
+task_assignments:
+  - task_group: "Task Group 1.1: Core Type Definitions"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 1.2: Authentication Types & Exceptions"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.1: Insert Operations with Builder Pattern"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.2: Upsert Operations with Multiple Variants"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.3: Get Operation"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3.1: Authentication Operations"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.1: Parameter Management"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.2: Function Execution"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 5.1: Export and Import Operations"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 6.1: Live Query Infrastructure"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 7.1: Transaction Support"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 8.1: Comprehensive Testing & Gap Analysis"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 8.2: Documentation & Examples"
+    assigned_subagent: "api-engineer"

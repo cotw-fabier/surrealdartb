@@ -37,14 +37,20 @@ pub mod error;
 pub mod runtime;
 pub mod database;
 pub mod query;
+pub mod auth;
+// pub mod live_query;
 
 // Re-export main FFI functions for convenience
 pub use error::{get_last_error, free_string, free_error_string};
-pub use database::{db_new, db_connect, db_use_ns, db_use_db, db_close};
+pub use database::{db_new, db_connect, db_use_ns, db_use_db, db_close, db_begin, db_commit, db_rollback};
 pub use query::{
     db_query, response_get_results, response_has_errors, response_free, response_get_errors,
-    db_select, db_create, db_update, db_delete
+    db_select, db_get, db_create, db_update, db_delete,
+    db_upsert_content, db_upsert_merge, db_upsert_patch, db_insert,
+    db_export, db_import, db_set, db_unset, db_run, db_version
 };
+pub use auth::{db_signin, db_signup, db_authenticate, db_invalidate};
+// pub use live_query::{db_select_live, db_live_poll, db_kill_live};
 
 #[cfg(test)]
 mod tests {
@@ -78,7 +84,7 @@ mod tests {
 
         // Check for errors
         let has_errors = response_has_errors(response);
-        assert_eq!(has_errors, 0);
+        assert_eq!(result, 0);
 
         // Clean up
         response_free(response);

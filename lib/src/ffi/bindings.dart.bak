@@ -132,54 +132,6 @@ external int dbUseDb(Pointer<NativeDatabase> handle, Pointer<Utf8> database);
 external void dbClose(Pointer<NativeDatabase> handle);
 
 //
-// Transaction Operations
-//
-
-/// Begins a transaction.
-///
-/// This function starts a new transaction. All subsequent operations
-/// on this handle will be part of the transaction until [dbCommit] or
-/// [dbRollback] is called.
-///
-/// Parameters:
-/// - [handle] - Database handle
-///
-/// Returns: 0 on success, -1 on failure
-///
-/// On error, call [getLastError] to retrieve the error message.
-@Native<NativeDbTransaction>(symbol: 'db_begin', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbBegin(Pointer<NativeDatabase> handle);
-
-/// Commits a transaction.
-///
-/// This function commits the current transaction, making all changes
-/// permanent. If the commit fails, the transaction remains active and
-/// should be rolled back.
-///
-/// Parameters:
-/// - [handle] - Database handle
-///
-/// Returns: 0 on success, -1 on failure
-///
-/// On error, call [getLastError] to retrieve the error message.
-@Native<NativeDbTransaction>(symbol: 'db_commit', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbCommit(Pointer<NativeDatabase> handle);
-
-/// Rolls back a transaction.
-///
-/// This function rolls back the current transaction, discarding all
-/// changes made within the transaction.
-///
-/// Parameters:
-/// - [handle] - Database handle
-///
-/// Returns: 0 on success, -1 on failure
-///
-/// On error, call [getLastError] to retrieve the error message.
-@Native<NativeDbTransaction>(symbol: 'db_rollback', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbRollback(Pointer<NativeDatabase> handle);
-
-//
 // Query Execution
 //
 
@@ -307,51 +259,6 @@ external Pointer<NativeResponse> dbDelete(
   Pointer<Utf8> resource,
 );
 
-/// Upserts a record with CONTENT (full replacement).
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [resource] - Record identifier (e.g., "table:id", must be specific record)
-/// - [data] - Record data as JSON string
-///
-/// Returns: Response handle with upserted record
-@Native<NativeDbUpdate>(symbol: 'db_upsert_content', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<NativeResponse> dbUpsertContent(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> resource,
-  Pointer<Utf8> data,
-);
-
-/// Upserts a record with MERGE (field merging).
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [resource] - Record identifier (e.g., "table:id", must be specific record)
-/// - [data] - Fields to merge as JSON string
-///
-/// Returns: Response handle with upserted record
-@Native<NativeDbUpdate>(symbol: 'db_upsert_merge', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<NativeResponse> dbUpsertMerge(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> resource,
-  Pointer<Utf8> data,
-);
-
-/// Upserts a record with PATCH (JSON patch operations).
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [resource] - Record identifier (e.g., "table:id", must be specific record)
-/// - [patches] - JSON array of patch operations (RFC 6902 format)
-///
-/// Returns: Response handle with upserted record
-@Native<NativeDbUpdate>(symbol: 'db_upsert_patch', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<NativeResponse> dbUpsertPatch(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> resource,
-  Pointer<Utf8> patches,
-);
-
 /// Inserts a record with content.
 ///
 /// Parameters:
@@ -366,74 +273,6 @@ external Pointer<NativeResponse> dbInsert(
   Pointer<Utf8> resource,
   Pointer<Utf8> data,
 );
-
-//
-// Authentication Operations
-//
-
-/// Signs in with credentials and returns a JWT token.
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [credentialsJson] - JSON-serialized credentials
-///
-/// Returns: Pointer to C string containing JWT token JSON, or nullptr on error
-///
-/// Embedded mode limitations:
-/// - Authentication may have reduced functionality
-/// - Scope-based access control may not fully apply
-/// - Token refresh not supported
-@Native<NativeDbSignin>(symbol: 'db_signin', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<Utf8> dbSignin(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> credentialsJson,
-);
-
-/// Signs up a new user with scope credentials and returns a JWT token.
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [credentialsJson] - JSON-serialized scope or record credentials
-///
-/// Returns: Pointer to C string containing JWT token JSON, or nullptr on error
-///
-/// Embedded mode limitations:
-/// - Signup functionality may be limited
-/// - User creation may not work as expected
-@Native<NativeDbSignup>(symbol: 'db_signup', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<Utf8> dbSignup(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> credentialsJson,
-);
-
-/// Authenticates with an existing JWT token.
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [token] - JWT token string
-///
-/// Returns: 0 on success, negative error code on failure
-///
-/// Embedded mode limitations:
-/// - Token-based authentication may have limited functionality
-/// - Token validation may not work as expected
-@Native<NativeDbAuthenticate>(symbol: 'db_authenticate', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbAuthenticate(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> token,
-);
-
-/// Invalidates the current authentication session.
-///
-/// Parameters:
-/// - [handle] - Database handle
-///
-/// Returns: 0 on success, negative error code on failure
-///
-/// Embedded mode limitations:
-/// - Session invalidation may have limited effect
-@Native<NativeDbInvalidate>(symbol: 'db_invalidate', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbInvalidate(Pointer<NativeDatabase> handle);
 
 //
 // Error Handling
@@ -457,57 +296,3 @@ external Pointer<Utf8> getLastError();
 /// - [ptr] - Pointer to UTF-8 string to free
 @Native<NativeFreeString>(symbol: 'free_string', assetId: 'package:surrealdartb/surrealdartb_bindings')
 external void freeString(Pointer<Utf8> ptr);
-
-/// Sets a query parameter for the connection.
-///
-/// Parameters persist per connection and can be used in queries with $name syntax.
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [name] - Parameter name as UTF-8 string
-/// - [value] - Parameter value as JSON string
-///
-/// Returns: 0 on success, -1 on failure
-@Native<NativeDbSet>(symbol: 'db_set', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbSet(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> name,
-  Pointer<Utf8> value,
-);
-
-/// Unsets a query parameter from the connection.
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [name] - Parameter name as UTF-8 string
-///
-/// Returns: 0 on success, -1 on failure
-@Native<NativeDbUnset>(symbol: 'db_unset', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external int dbUnset(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> name,
-);
-
-/// Executes a SurrealQL function.
-///
-/// Parameters:
-/// - [handle] - Database handle
-/// - [function] - Function name as UTF-8 string (e.g., "rand::float")
-/// - [args] - JSON array of arguments as UTF-8 string (null for no arguments)
-///
-/// Returns: Response handle with function result
-@Native<NativeDbRun>(symbol: 'db_run', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<NativeResponse> dbRun(
-  Pointer<NativeDatabase> handle,
-  Pointer<Utf8> function,
-  Pointer<Utf8> args,
-);
-
-/// Gets the database version.
-///
-/// Parameters:
-/// - [handle] - Database handle
-///
-/// Returns: UTF-8 string containing version (must be freed with freeString)
-@Native<NativeDbVersion>(symbol: 'db_version', assetId: 'package:surrealdartb/surrealdartb_bindings')
-external Pointer<Utf8> dbVersion(Pointer<NativeDatabase> handle);

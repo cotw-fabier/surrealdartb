@@ -139,18 +139,17 @@ class QueryException extends DatabaseException {
 /// Exception thrown when an authentication operation fails.
 ///
 /// This includes failures during:
-/// - User authentication
+/// - User signin with credentials
+/// - User signup with scope credentials
+/// - JWT token authentication
+/// - Session invalidation
 /// - Permission checks
 /// - Authorization validation
-/// - Namespace/database access
-///
-/// Note: In the initial FFI implementation, authentication is not yet
-/// fully implemented, but this exception type is defined for future use.
 ///
 /// Example:
 /// ```dart
 /// try {
-///   await db.authenticate(username, password);
+///   final jwt = await db.signin(credentials);
 /// } catch (e) {
 ///   if (e is AuthenticationException) {
 ///     print('Authentication failed: ${e.message}');
@@ -168,6 +167,203 @@ class AuthenticationException extends DatabaseException {
   @override
   String toString() {
     final buffer = StringBuffer('AuthenticationException: $message');
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+    return buffer.toString();
+  }
+}
+
+/// Exception thrown when a transaction operation fails.
+///
+/// This includes failures during:
+/// - Transaction begin
+/// - Transaction commit
+/// - Transaction rollback
+/// - Transaction-scoped operations
+///
+/// Example:
+/// ```dart
+/// try {
+///   await db.transaction((txn) async {
+///     // Transaction operations...
+///   });
+/// } catch (e) {
+///   if (e is TransactionException) {
+///     print('Transaction failed: ${e.message}');
+///   }
+/// }
+/// ```
+class TransactionException extends DatabaseException {
+  /// Creates a transaction exception.
+  TransactionException(
+    super.message, {
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('TransactionException: $message');
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+    return buffer.toString();
+  }
+}
+
+/// Exception thrown when a live query subscription fails.
+///
+/// This includes failures during:
+/// - Live query subscription creation
+/// - Live query notification processing
+/// - Live query cancellation
+/// - Stream creation or management
+///
+/// Example:
+/// ```dart
+/// try {
+///   final stream = await db.select('person').live();
+/// } catch (e) {
+///   if (e is LiveQueryException) {
+///     print('Live query failed: ${e.message}');
+///   }
+/// }
+/// ```
+class LiveQueryException extends DatabaseException {
+  /// Creates a live query exception.
+  LiveQueryException(
+    super.message, {
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('LiveQueryException: $message');
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+    return buffer.toString();
+  }
+}
+
+/// Exception thrown when a parameter operation fails.
+///
+/// This includes failures during:
+/// - Setting query parameters
+/// - Unsetting query parameters
+/// - Parameter validation
+/// - Parameter serialization
+///
+/// Example:
+/// ```dart
+/// try {
+///   await db.set('param_name', value);
+/// } catch (e) {
+///   if (e is ParameterException) {
+///     print('Parameter operation failed: ${e.message}');
+///   }
+/// }
+/// ```
+class ParameterException extends DatabaseException {
+  /// Creates a parameter exception.
+  ParameterException(
+    super.message, {
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('ParameterException: $message');
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+    return buffer.toString();
+  }
+}
+
+/// Exception thrown when a database export operation fails.
+///
+/// This includes failures during:
+/// - File creation or writing
+/// - Data serialization
+/// - Export operation execution
+/// - Permission errors
+///
+/// Example:
+/// ```dart
+/// try {
+///   await db.export('/path/to/backup.surql');
+/// } catch (e) {
+///   if (e is ExportException) {
+///     print('Export failed: ${e.message}');
+///   }
+/// }
+/// ```
+class ExportException extends DatabaseException {
+  /// Creates an export exception.
+  ExportException(
+    super.message, {
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('ExportException: $message');
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+    return buffer.toString();
+  }
+}
+
+/// Exception thrown when a database import operation fails.
+///
+/// This includes failures during:
+/// - File reading or parsing
+/// - Data deserialization
+/// - Import operation execution
+/// - Permission errors
+///
+/// Example:
+/// ```dart
+/// try {
+///   await db.import('/path/to/backup.surql');
+/// } catch (e) {
+///   if (e is ImportException) {
+///     print('Import failed: ${e.message}');
+///   }
+/// }
+/// ```
+class ImportException extends DatabaseException {
+  /// Creates an import exception.
+  ImportException(
+    super.message, {
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('ImportException: $message');
     if (errorCode != null) {
       buffer.write(' (error code: $errorCode)');
     }

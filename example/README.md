@@ -4,7 +4,7 @@ An interactive CLI demonstration of the SurrealDartB library, showcasing core fe
 
 ## Overview
 
-This example application provides a menu-driven interface to explore SurrealDB's capabilities via the Dart FFI bindings. Each scenario demonstrates different aspects of the library, from basic connectivity to advanced CRUD operations and storage backend comparisons.
+This example application provides a menu-driven interface to explore SurrealDB's capabilities via the Dart FFI bindings. Each scenario demonstrates different aspects of the library, from basic connectivity to advanced features like authentication and parameterized queries.
 
 ## Running the Example
 
@@ -32,7 +32,9 @@ You'll see an interactive menu:
 │ 1. Connect and Verify Connectivity                        │
 │ 2. CRUD Operations Demonstration                          │
 │ 3. Storage Backend Comparison                             │
-│ 4. Exit                                                    │
+│ 4. Authentication Features (NEW!)                         │
+│ 5. Parameters & Functions (NEW!)                          │
+│ 6. Exit                                                    │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -173,16 +175,88 @@ Cleaning up...
 ✓ Removed temporary database files
 ```
 
+### Scenario 4: Authentication Features (NEW!)
+
+**File**: `scenarios/authentication.dart`
+
+**What it demonstrates:**
+- Signing in with different credential types (root, database, scope)
+- Signing up new users with scope credentials
+- Authenticating with JWT tokens
+- Session invalidation
+- Token storage and retrieval patterns
+
+**What you'll learn:**
+- Different authentication levels in SurrealDB
+- How to work with JWT tokens
+- Session management patterns
+- Embedded mode authentication limitations
+
+**Key features:**
+- Root-level authentication for admin access
+- Database-level authentication for namespace/database access
+- Scope-based authentication for user accounts
+- JWT token extraction and reuse
+- Session invalidation for logout
+
+**Important notes:**
+- Authentication in embedded mode has some limitations
+- Scope-based access control may not fully apply
+- Token refresh is not supported
+- Ideal for understanding auth patterns before production deployment
+
+### Scenario 5: Parameters & Functions (NEW!)
+
+**File**: `scenarios/parameters_functions.dart`
+
+**What it demonstrates:**
+- Setting and using query parameters
+- Unsetting parameters
+- Executing built-in SurrealQL functions
+- Defining and executing user-defined functions
+- Getting database version
+
+**What you'll learn:**
+- How to create parameterized queries for security and reusability
+- Available built-in SurrealQL functions (rand, string, math, time)
+- How to define custom functions
+- Type-safe function execution with generics
+
+**Key features:**
+- **Parameters**: Set once, use in multiple queries
+- **Security**: Prevent SQL injection with parameters
+- **Built-in functions**: Random numbers, string manipulation, math operations
+- **Custom functions**: Define reusable business logic
+- **Version checking**: Get SurrealDB version for compatibility
+
+**Example operations:**
+```dart
+// Set parameters
+await db.set('min_age', 18);
+await db.set('status', 'active');
+
+// Use in query
+SELECT * FROM person WHERE age >= $min_age AND status = $status
+
+// Execute functions
+final random = await db.run<double>('rand::float');
+final upper = await db.run<String>('string::uppercase', ['hello']);
+final tax = await db.run<double>('fn::calculate_tax', [100.0, 0.08]);
+```
+
 ## Project Structure
 
 ```
 example/
-├── cli_example.dart              # Main menu driver
-├── surrealdartb_example.dart     # Alternative simple example
+├── cli_example.dart                     # Main menu driver
+├── surrealdartb_example.dart            # Alternative simple example
+├── README.md                            # This file
 └── scenarios/
-    ├── connect_verify.dart       # Scenario 1
-    ├── crud_operations.dart      # Scenario 2
-    └── storage_comparison.dart   # Scenario 3
+    ├── connect_verify.dart              # Scenario 1
+    ├── crud_operations.dart             # Scenario 2
+    ├── storage_comparison.dart          # Scenario 3
+    ├── authentication.dart              # Scenario 4 (NEW!)
+    └── parameters_functions.dart        # Scenario 5 (NEW!)
 ```
 
 ### File Descriptions
@@ -207,6 +281,18 @@ example/
 - Backend comparison
 - Persistence demonstration
 - Temporary file handling
+
+**`scenarios/authentication.dart`**
+- Authentication workflows
+- JWT token management
+- Session handling
+- Multiple credential types
+
+**`scenarios/parameters_functions.dart`**
+- Parameter management
+- Built-in function execution
+- Custom function definition
+- Database version retrieval
 
 ## Understanding the Code
 
@@ -239,8 +325,12 @@ Scenarios catch and display errors clearly:
 ```dart
 try {
   await db.create('table', data);
+} on AuthenticationException catch (e) {
+  print('Auth error: $e');
+} on ParameterException catch (e) {
+  print('Parameter error: $e');
 } catch (e) {
-  print('✗ Error: $e');
+  print('Error: $e');
 }
 ```
 
@@ -256,19 +346,33 @@ try {
 - Querying with SurrealQL
 - Updating specific fields
 - Deleting by record ID
+- Getting specific records
 
 ### 3. Storage Backends
 - **Memory**: Fast, temporary, testing
 - **RocksDB**: Persistent, production-ready
 
-### 4. Async/Await
+### 4. Authentication (NEW!)
+- Multiple credential types
+- JWT token management
+- Session lifecycle
+- Embedded mode limitations
+
+### 5. Parameters & Functions (NEW!)
+- Reusable parameterized queries
+- SQL injection prevention
+- Built-in SurrealQL functions
+- Custom user-defined functions
+
+### 6. Async/Await
 - All operations return Futures
 - Use `await` for sequential operations
-- Background isolate prevents blocking
+- Direct FFI calls for performance
 
-### 5. Type Safety
+### 7. Type Safety
 - Records returned as `Map<String, dynamic>`
 - Type casting when needed
+- Generic type parameters for functions
 - Null safety practices
 
 ## Extending the Examples
@@ -304,10 +408,10 @@ Future<void> runMyScenario() async {
 import 'scenarios/my_scenario.dart';
 
 // In the menu display:
-print('│ 4. My Custom Scenario                                 │');
+print('│ 7. My Custom Scenario                                 │');
 
 // In the switch statement:
-case '4':
+case '7':
   await _runScenario('My Custom Scenario', runMyScenario);
 ```
 
@@ -319,6 +423,8 @@ case '4':
 - **Batch Operations**: Create multiple records efficiently
 - **Error Scenarios**: Test error handling paths
 - **Performance Testing**: Stress test with many records
+- **Type Definitions**: RecordId, Datetime, SurrealDuration usage
+- **Custom Functions**: Complex business logic
 
 ## Troubleshooting
 
@@ -356,6 +462,10 @@ ls -la /tmp
 - Try pressing Enter to continue
 - Restart the example app
 
+### Issue: Authentication errors
+
+**Solution**: Remember that authentication in embedded mode has limitations. Check the scenario output and README notes about embedded mode auth.
+
 ## Learning Path
 
 **Recommended order for beginners:**
@@ -372,11 +482,21 @@ ls -la /tmp
    - Understand persistence
    - Choose appropriate backend
 
-4. **Read the code** in `scenarios/` folder
+4. **Try Scenario 5** (Parameters & Functions)
+   - Learn parameterized queries
+   - Explore SurrealQL functions
+   - Security best practices
+
+5. **Explore Scenario 4** (Authentication)
+   - Understand auth patterns
+   - JWT token handling
+   - Session management
+
+6. **Read the code** in `scenarios/` folder
    - See real-world patterns
    - Understand error handling
 
-5. **Experiment**: Modify scenarios
+7. **Experiment**: Modify scenarios
    - Change queries
    - Add new operations
    - Break things and learn!
@@ -417,6 +537,16 @@ await db.useDatabase('database1');
 await db.useDatabase('database2');
 // work with database2...
 ```
+
+**Q: How do I prevent SQL injection?**
+A: Use parameters! See Scenario 5 for examples:
+```dart
+await db.set('user_input', userValue);
+final response = await db.query('SELECT * FROM table WHERE field = $user_input');
+```
+
+**Q: Can I use authentication in production?**
+A: Authentication in embedded mode has limitations. For production apps with full auth features, consider deploying a remote SurrealDB server and connecting to it (future feature).
 
 ## Platform Support
 

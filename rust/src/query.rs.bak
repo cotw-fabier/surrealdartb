@@ -55,7 +55,7 @@ pub struct Response {
 ///
 /// This approach produces clean JSON that matches what users expect from a database query,
 /// without any internal type system artifacts leaking through to the Dart layer.
-pub fn surreal_value_to_json(value: &surrealdb::Value) -> Result<Value, String> {
+fn surreal_value_to_json(value: &surrealdb::Value) -> Result<Value, String> {
     use surrealdb_core::sql::Value as CoreValue;
     use surrealdb_core::sql::Number;
 
@@ -1028,400 +1028,109 @@ pub extern "C" fn db_delete(handle: *mut Database, resource: *const c_char) -> *
     }
 }
 
-/// Upsert a record with CONTENT (full replacement)
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `resource` - C string specifying the resource (must be table:id, not just table)
-/// * `data` - C string containing JSON data for the record
-///
-/// # Returns
-/// Pointer to Response handle containing the upserted record, or null on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - resource and data must be valid null-terminated C strings
-/// - resource must be in table:id format, not just table name
-/// - data must be valid JSON
-/// - Returned pointer must be freed via response_free()
-#[no_mangle]
-pub extern "C" fn db_upsert_content(handle: *mut Database, resource: *const c_char, data: *const c_char) -> *mut Response {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return std::ptr::null_mut();
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::{db_new, db_use_ns, db_use_db, db_connect};
 
-        if resource.is_null() {
-            set_last_error("Resource cannot be null");
-            return std::ptr::null_mut();
-        }
+    #[test]
+    fn test_query_execution() {
+        let endpoint = std::ffi::CString::new("mem://").unwrap();
+        let handle = db_new(endpoint.as_ptr());
+        assert!(!handle.is_null());
 
-        if data.is_null() {
-            set_last_error("Data cannot be null");
-            return std::ptr::null_mut();
-        }
+        assert_eq!(db_connect(handle), 0);
 
-        let resource_str = unsafe {
-            match CStr::from_ptr(resource).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in resource");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
+        let ns = std::ffi::CString::new("test").unwrap();
+        db_use_ns(handle, ns.as_ptr());
 
-        let data_str = unsafe {
-            match CStr::from_ptr(data).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in data");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
+        let db = std::ffi::CString::new("test").unwrap();
+        db_use_db(handle, db.as_ptr());
 
-        // Validate that resource contains a colon (table:id format)
-        if !resource_str.contains(':') {
-            set_last_error("Upsert requires a specific record ID (table:id format), not just a table name");
-            return std::ptr::null_mut();
-        }
+        let sql = std::ffi::CString::new("SELECT * FROM person").unwrap();
+        let response = db_query(handle, sql.as_ptr());
 
-        // Validate JSON
-        let _: Value = match serde_json::from_str(data_str) {
-            Ok(v) => v,
-            Err(e) => {
-                set_last_error(&format!("Invalid JSON in data: {}", e));
-                return std::ptr::null_mut();
-            }
-        };
+        // Query should succeed even if table is empty
+        assert!(!response.is_null());
 
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        // Use query() with UPSERT ... CONTENT statement
-        let query_sql = format!("UPSERT {} CONTENT {}", resource_str, data_str);
-
-        match runtime.block_on(async {
-            db.inner.query(&query_sql).await
-        }) {
-            Ok(mut response) => {
-                let mut results = Vec::new();
-                let mut errors = Vec::new();
-
-                let num_statements = response.num_statements();
-
-                // Extract errors
-                let error_map = response.take_errors();
-                for (idx, err) in error_map {
-                    errors.push(format!("Statement {}: {}", idx, err));
-                }
-
-                // Extract results and unwrap using manual unwrapper
-                for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
-                        Ok(value) => {
-                            match surreal_value_to_json(&value) {
-                                Ok(json_value) => results.push(json_value),
-                                Err(e) => {
-                                    errors.push(format!("Failed to convert result: {}", e));
-                                    results.push(Value::Null);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if !errors.iter().any(|err_msg| err_msg.contains(&format!("Statement {}:", idx))) {
-                                errors.push(format!("Failed to extract result: {}", e));
-                            }
-                            results.push(Value::Null);
-                        }
-                    }
-                }
-
-                let response_obj = Box::new(Response { results, errors });
-                Box::into_raw(response_obj)
-            }
-            Err(e) => {
-                set_last_error(&format!("Upsert content failed: {}", e));
-                std::ptr::null_mut()
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_upsert_content");
-            std::ptr::null_mut()
-        }
+        response_free(response);
+        crate::database::db_close(handle);
     }
-}
 
-/// Upsert a record with MERGE (field merging)
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `resource` - C string specifying the resource (must be table:id, not just table)
-/// * `data` - C string containing JSON data with fields to merge
-///
-/// # Returns
-/// Pointer to Response handle containing the upserted record, or null on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - resource and data must be valid null-terminated C strings
-/// - resource must be in table:id format, not just table name
-/// - data must be valid JSON
-/// - Returned pointer must be freed via response_free()
-#[no_mangle]
-pub extern "C" fn db_upsert_merge(handle: *mut Database, resource: *const c_char, data: *const c_char) -> *mut Response {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return std::ptr::null_mut();
-        }
-
-        if resource.is_null() {
-            set_last_error("Resource cannot be null");
-            return std::ptr::null_mut();
-        }
-
-        if data.is_null() {
-            set_last_error("Data cannot be null");
-            return std::ptr::null_mut();
-        }
-
-        let resource_str = unsafe {
-            match CStr::from_ptr(resource).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in resource");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
-
-        let data_str = unsafe {
-            match CStr::from_ptr(data).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in data");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
-
-        // Validate that resource contains a colon (table:id format)
-        if !resource_str.contains(':') {
-            set_last_error("Upsert requires a specific record ID (table:id format), not just a table name");
-            return std::ptr::null_mut();
-        }
-
-        // Validate JSON
-        let _: Value = match serde_json::from_str(data_str) {
-            Ok(v) => v,
-            Err(e) => {
-                set_last_error(&format!("Invalid JSON in data: {}", e));
-                return std::ptr::null_mut();
-            }
-        };
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        // Use query() with UPSERT ... MERGE statement
-        let query_sql = format!("UPSERT {} MERGE {}", resource_str, data_str);
-
-        match runtime.block_on(async {
-            db.inner.query(&query_sql).await
-        }) {
-            Ok(mut response) => {
-                let mut results = Vec::new();
-                let mut errors = Vec::new();
-
-                let num_statements = response.num_statements();
-
-                // Extract errors
-                let error_map = response.take_errors();
-                for (idx, err) in error_map {
-                    errors.push(format!("Statement {}: {}", idx, err));
-                }
-
-                // Extract results and unwrap using manual unwrapper
-                for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
-                        Ok(value) => {
-                            match surreal_value_to_json(&value) {
-                                Ok(json_value) => results.push(json_value),
-                                Err(e) => {
-                                    errors.push(format!("Failed to convert result: {}", e));
-                                    results.push(Value::Null);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if !errors.iter().any(|err_msg| err_msg.contains(&format!("Statement {}:", idx))) {
-                                errors.push(format!("Failed to extract result: {}", e));
-                            }
-                            results.push(Value::Null);
-                        }
-                    }
-                }
-
-                let response_obj = Box::new(Response { results, errors });
-                Box::into_raw(response_obj)
-            }
-            Err(e) => {
-                set_last_error(&format!("Upsert merge failed: {}", e));
-                std::ptr::null_mut()
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_upsert_merge");
-            std::ptr::null_mut()
-        }
+    #[test]
+    fn test_response_free_null() {
+        // Should not panic
+        response_free(std::ptr::null_mut());
     }
-}
 
-/// Upsert a record with PATCH (JSON patch operations)
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `resource` - C string specifying the resource (must be table:id, not just table)
-/// * `patches` - C string containing JSON array of patch operations (RFC 6902 format)
-///
-/// # Returns
-/// Pointer to Response handle containing the upserted record, or null on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - resource and patches must be valid null-terminated C strings
-/// - resource must be in table:id format, not just table name
-/// - patches must be valid JSON array with patch operations
-/// - Returned pointer must be freed via response_free()
-///
-/// # Patch Format
-/// patches should be a JSON array of patch operations, each with:
-/// - "op": "add" | "remove" | "replace" | "change"
-/// - "path": JSON Pointer path (e.g., "/field")
-/// - "value": value for add/replace/change operations (omit for remove)
-///
-/// Example: [{"op":"add","path":"/email","value":"user@example.com"},{"op":"remove","path":"/temp"}]
-#[no_mangle]
-pub extern "C" fn db_upsert_patch(handle: *mut Database, resource: *const c_char, patches: *const c_char) -> *mut Response {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return std::ptr::null_mut();
-        }
+    #[test]
+    fn test_create_deserialization() {
+        unsafe {
+            // Setup
+            let endpoint = CString::new("mem://").unwrap();
+            let handle = db_new(endpoint.as_ptr());
+            assert!(!handle.is_null(), "Failed to create database");
 
-        if resource.is_null() {
-            set_last_error("Resource cannot be null");
-            return std::ptr::null_mut();
-        }
+            assert_eq!(db_connect(handle), 0, "Failed to connect");
 
-        if patches.is_null() {
-            set_last_error("Patches cannot be null");
-            return std::ptr::null_mut();
-        }
+            let ns = CString::new("test").unwrap();
+            db_use_ns(handle, ns.as_ptr());
 
-        let resource_str = unsafe {
-            match CStr::from_ptr(resource).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in resource");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
+            let db = CString::new("test").unwrap();
+            db_use_db(handle, db.as_ptr());
 
-        let patches_str = unsafe {
-            match CStr::from_ptr(patches).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in patches");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
+            // Create record
+            let table = CString::new("person").unwrap();
+            let data = CString::new(r#"{"name":"Alice","age":30,"email":"alice@test.com","active":true,"tags":["developer","tester"],"metadata":{"created":"2025-10-21","department":"Engineering"}}"#).unwrap();
 
-        // Validate that resource contains a colon (table:id format)
-        if !resource_str.contains(':') {
-            set_last_error("Upsert requires a specific record ID (table:id format), not just a table name");
-            return std::ptr::null_mut();
-        }
+            let response = db_create(handle, table.as_ptr(), data.as_ptr());
+            assert!(!response.is_null(), "CREATE failed");
 
-        // Validate JSON array
-        let patches_array: Vec<Value> = match serde_json::from_str(patches_str) {
-            Ok(v) => v,
-            Err(e) => {
-                set_last_error(&format!("Invalid JSON in patches: {}", e));
-                return std::ptr::null_mut();
-            }
-        };
+            // Verify no errors
+            assert_eq!(response_has_errors(response), 0, "CREATE returned errors");
 
-        // Validate that patches is non-empty
-        if patches_array.is_empty() {
-            set_last_error("Patches array cannot be empty");
-            return std::ptr::null_mut();
-        }
+            // Get results
+            let results_ptr = response_get_results(response);
+            assert!(!results_ptr.is_null(), "Failed to get results");
 
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
+            let results_json = CStr::from_ptr(results_ptr).to_str().unwrap();
+            println!("CREATE results: {}", results_json);
 
-        // Use query() with UPSERT ... PATCH statement
-        let query_sql = format!("UPSERT {} PATCH {}", resource_str, patches_str);
+            // Verify no type wrappers
+            assert!(!results_json.contains("\"Strand\""), "Found Strand wrapper");
+            assert!(!results_json.contains("\"Number\""), "Found Number wrapper");
+            assert!(!results_json.contains("\"Bool\""), "Found Bool wrapper");
+            assert!(!results_json.contains("\"Thing\""), "Found Thing wrapper (should be string)");
 
-        match runtime.block_on(async {
-            db.inner.query(&query_sql).await
-        }) {
-            Ok(mut response) => {
-                let mut results = Vec::new();
-                let mut errors = Vec::new();
+            // Parse and validate
+            let results: serde_json::Value = serde_json::from_str(results_json).unwrap();
+            let results_array = results.as_array().unwrap();
+            assert_eq!(results_array.len(), 1);
 
-                let num_statements = response.num_statements();
+            let record = &results_array[0];
+            let record_array = record.as_array().unwrap();
+            let person = &record_array[0];
 
-                // Extract errors
-                let error_map = response.take_errors();
-                for (idx, err) in error_map {
-                    errors.push(format!("Statement {}: {}", idx, err));
-                }
+            // Verify field values
+            assert_eq!(person["name"].as_str(), Some("Alice"));
+            assert_eq!(person["age"].as_i64(), Some(30));
+            assert_eq!(person["email"].as_str(), Some("alice@test.com"));
+            assert_eq!(person["active"].as_bool(), Some(true));
 
-                // Extract results and unwrap using manual unwrapper
-                for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
-                        Ok(value) => {
-                            match surreal_value_to_json(&value) {
-                                Ok(json_value) => results.push(json_value),
-                                Err(e) => {
-                                    errors.push(format!("Failed to convert result: {}", e));
-                                    results.push(Value::Null);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if !errors.iter().any(|err_msg| err_msg.contains(&format!("Statement {}:", idx))) {
-                                errors.push(format!("Failed to extract result: {}", e));
-                            }
-                            results.push(Value::Null);
-                        }
-                    }
-                }
+            // Verify ID format
+            let id = person["id"].as_str().unwrap();
+            assert!(id.starts_with("person:"));
+            assert!(!id.contains("Thing"));
 
-                let response_obj = Box::new(Response { results, errors });
-                Box::into_raw(response_obj)
-            }
-            Err(e) => {
-                set_last_error(&format!("Upsert patch failed: {}", e));
-                std::ptr::null_mut()
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_upsert_patch");
-            std::ptr::null_mut()
+            println!("✓ Deserialization test PASSED!");
+            println!("  - No type wrappers found");
+            println!("  - Field values correct");
+            println!("  - Thing ID formatted as: {}", id);
+
+            // Cleanup
+            crate::error::free_error_string(results_ptr);
+            response_free(response);
+            crate::database::db_close(handle);
         }
     }
 }
@@ -1555,638 +1264,6 @@ pub extern "C" fn db_insert(handle: *mut Database, resource: *const c_char, data
         Ok(result) => result,
         Err(_) => {
             set_last_error("Panic occurred in db_insert");
-            std::ptr::null_mut()
-        }
-    }
-}
-
-/// Export database to a file
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `path` - C string specifying the file path for export
-///
-/// # Returns
-/// 0 on success, -1 on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - path must be a valid null-terminated C string
-/// - Caller must have write permissions to the file path
-///
-/// # Implementation Note
-/// This is a basic implementation that exports the entire database.
-/// Advanced configuration options (table selection, format options,
-/// ML model handling) are deferred to a future iteration.
-///
-/// # Errors
-/// Returns -1 and sets last error if:
-/// - handle or path is null
-/// - path is not valid UTF-8
-/// - File I/O fails (permissions, disk space, etc.)
-/// - Export operation fails
-#[no_mangle]
-pub extern "C" fn db_export(handle: *mut Database, path: *const c_char) -> i32 {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return -1;
-        }
-
-        if path.is_null() {
-            set_last_error("File path cannot be null");
-            return -1;
-        }
-
-        let path_str = unsafe {
-            match CStr::from_ptr(path).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in file path");
-                    return -1;
-                }
-            }
-        };
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        // Export the database to file
-        match runtime.block_on(async {
-            db.inner.export(path_str).await
-        }) {
-            Ok(_) => 0,
-            Err(e) => {
-                set_last_error(&format!("Export failed: {}", e));
-                -1
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_export");
-            -1
-        }
-    }
-}
-
-/// Import database from a file
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `path` - C string specifying the file path for import
-///
-/// # Returns
-/// 0 on success, -1 on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - path must be a valid null-terminated C string
-/// - File must exist and be readable
-/// - File must contain valid SurrealQL statements
-///
-/// # Implementation Note
-/// This is a basic implementation that imports the entire file.
-/// Advanced configuration options are deferred to a future iteration.
-///
-/// # Errors
-/// Returns -1 and sets last error if:
-/// - handle or path is null
-/// - path is not valid UTF-8
-/// - File doesn't exist or isn't readable
-/// - File contains invalid SurrealQL
-/// - Import operation fails
-#[no_mangle]
-pub extern "C" fn db_import(handle: *mut Database, path: *const c_char) -> i32 {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return -1;
-        }
-
-        if path.is_null() {
-            set_last_error("File path cannot be null");
-            return -1;
-        }
-
-        let path_str = unsafe {
-            match CStr::from_ptr(path).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in file path");
-                    return -1;
-                }
-            }
-        };
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        // Import the database from file
-        match runtime.block_on(async {
-            db.inner.import(path_str).await
-        }) {
-            Ok(_) => 0,
-            Err(e) => {
-                set_last_error(&format!("Import failed: {}", e));
-                -1
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_import");
-            -1
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::database::{db_new, db_use_ns, db_use_db, db_connect};
-
-    #[test]
-    fn test_query_execution() {
-        let endpoint = std::ffi::CString::new("mem://").unwrap();
-        let handle = db_new(endpoint.as_ptr());
-        assert!(!handle.is_null());
-
-        assert_eq!(db_connect(handle), 0);
-
-        let ns = std::ffi::CString::new("test").unwrap();
-        db_use_ns(handle, ns.as_ptr());
-
-        let db = std::ffi::CString::new("test").unwrap();
-        db_use_db(handle, db.as_ptr());
-
-        let sql = std::ffi::CString::new("SELECT * FROM person").unwrap();
-        let response = db_query(handle, sql.as_ptr());
-
-        // Query should succeed even if table is empty
-        assert!(!response.is_null());
-
-        response_free(response);
-        crate::database::db_close(handle);
-    }
-
-    #[test]
-    fn test_response_free_null() {
-        // Should not panic
-        response_free(std::ptr::null_mut());
-    }
-
-    #[test]
-    fn test_create_deserialization() {
-        unsafe {
-            // Setup
-            let endpoint = CString::new("mem://").unwrap();
-            let handle = db_new(endpoint.as_ptr());
-            assert!(!handle.is_null(), "Failed to create database");
-
-            assert_eq!(db_connect(handle), 0, "Failed to connect");
-
-            let ns = CString::new("test").unwrap();
-            db_use_ns(handle, ns.as_ptr());
-
-            let db = CString::new("test").unwrap();
-            db_use_db(handle, db.as_ptr());
-
-            // Create record
-            let table = CString::new("person").unwrap();
-            let data = CString::new(r#"{"name":"Alice","age":30,"email":"alice@test.com","active":true,"tags":["developer","tester"],"metadata":{"created":"2025-10-21","department":"Engineering"}}"#).unwrap();
-
-            let response = db_create(handle, table.as_ptr(), data.as_ptr());
-            assert!(!response.is_null(), "CREATE failed");
-
-            // Verify no errors
-            assert_eq!(response_has_errors(response), 0, "CREATE returned errors");
-
-            // Get results
-            let results_ptr = response_get_results(response);
-            assert!(!results_ptr.is_null(), "Failed to get results");
-
-            let results_json = CStr::from_ptr(results_ptr).to_str().unwrap();
-            println!("CREATE results: {}", results_json);
-
-            // Verify no type wrappers
-            assert!(!results_json.contains("\"Strand\""), "Found Strand wrapper");
-            assert!(!results_json.contains("\"Number\""), "Found Number wrapper");
-            assert!(!results_json.contains("\"Bool\""), "Found Bool wrapper");
-            assert!(!results_json.contains("\"Thing\""), "Found Thing wrapper (should be string)");
-
-            // Parse and validate
-            let results: serde_json::Value = serde_json::from_str(results_json).unwrap();
-            let results_array = results.as_array().unwrap();
-            assert_eq!(results_array.len(), 1);
-
-            let record = &results_array[0];
-            let record_array = record.as_array().unwrap();
-            let person = &record_array[0];
-
-            // Verify field values
-            assert_eq!(person["name"].as_str(), Some("Alice"));
-            assert_eq!(person["age"].as_i64(), Some(30));
-            assert_eq!(person["email"].as_str(), Some("alice@test.com"));
-            assert_eq!(person["active"].as_bool(), Some(true));
-
-            // Verify ID format
-            let id = person["id"].as_str().unwrap();
-            assert!(id.starts_with("person:"));
-            assert!(!id.contains("Thing"));
-
-            println!("✓ Deserialization test PASSED!");
-            println!("  - No type wrappers found");
-            println!("  - Field values correct");
-            println!("  - Thing ID formatted as: {}", id);
-
-            // Cleanup
-            crate::error::free_error_string(results_ptr);
-            response_free(response);
-            crate::database::db_close(handle);
-        }
-    }
-}
-
-/// Set a parameter for the database connection
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `name` - C string specifying the parameter name
-/// * `value` - C string containing JSON value for the parameter
-///
-/// # Returns
-/// 0 on success, -1 on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - name and value must be valid null-terminated C strings
-/// - value must be valid JSON
-/// - Parameters persist per connection and can be used in queries with $name syntax
-///
-/// # Errors
-/// Returns -1 and sets last error if:
-/// - handle, name, or value is null
-/// - name or value is not valid UTF-8
-/// - value is not valid JSON
-/// - Parameter set operation fails
-#[no_mangle]
-pub extern "C" fn db_set(handle: *mut Database, name: *const c_char, value: *const c_char) -> i32 {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return -1;
-        }
-
-        if name.is_null() {
-            set_last_error("Parameter name cannot be null");
-            return -1;
-        }
-
-        if value.is_null() {
-            set_last_error("Parameter value cannot be null");
-            return -1;
-        }
-
-        let name_str = unsafe {
-            match CStr::from_ptr(name).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in parameter name");
-                    return -1;
-                }
-            }
-        };
-
-        let value_str = unsafe {
-            match CStr::from_ptr(value).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in parameter value");
-                    return -1;
-                }
-            }
-        };
-
-        // Validate name is not empty
-        if name_str.trim().is_empty() {
-            set_last_error("Parameter name cannot be empty");
-            return -1;
-        }
-
-        // Parse and validate JSON value
-        let json_value: Value = match serde_json::from_str(value_str) {
-            Ok(v) => v,
-            Err(e) => {
-                set_last_error(&format!("Invalid JSON in parameter value: {}", e));
-                return -1;
-            }
-        };
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        match runtime.block_on(async {
-            db.inner.set(name_str, json_value).await
-        }) {
-            Ok(_) => 0,
-            Err(e) => {
-                set_last_error(&format!("Failed to set parameter: {}", e));
-                -1
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_set");
-            -1
-        }
-    }
-}
-
-/// Unset a parameter from the database connection
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `name` - C string specifying the parameter name to remove
-///
-/// # Returns
-/// 0 on success, -1 on failure
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - name must be a valid null-terminated C string
-/// - No error is returned if the parameter doesn't exist
-///
-/// # Errors
-/// Returns -1 and sets last error if:
-/// - handle or name is null
-/// - name is not valid UTF-8
-/// - Unset operation fails
-#[no_mangle]
-pub extern "C" fn db_unset(handle: *mut Database, name: *const c_char) -> i32 {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return -1;
-        }
-
-        if name.is_null() {
-            set_last_error("Parameter name cannot be null");
-            return -1;
-        }
-
-        let name_str = unsafe {
-            match CStr::from_ptr(name).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in parameter name");
-                    return -1;
-                }
-            }
-        };
-
-        // Validate name is not empty
-        if name_str.trim().is_empty() {
-            set_last_error("Parameter name cannot be empty");
-            return -1;
-        }
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        match runtime.block_on(async {
-            db.inner.unset(name_str).await
-        }) {
-            Ok(_) => 0,
-            Err(e) => {
-                set_last_error(&format!("Failed to unset parameter: {}", e));
-                -1
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_unset");
-            -1
-        }
-    }
-}
-
-/// Execute a SurrealQL function
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-/// * `function` - C string specifying the function name (e.g., "rand::float", "fn::my_function")
-/// * `args` - C string containing JSON array of arguments, or null/empty for no arguments
-///
-/// # Returns
-/// Pointer to Response handle containing the function result, or null on failure
-///
-/// # Safety
-/// - handle and function must be valid pointers
-/// - function must be a valid null-terminated C string
-/// - args must be null or a valid null-terminated C string containing a JSON array
-/// - Returned pointer must be freed via response_free()
-///
-/// # Errors
-/// Returns null and sets last error if:
-/// - handle or function is null
-/// - function or args is not valid UTF-8
-/// - args is not a valid JSON array
-/// - Function execution fails
-///
-/// # Examples
-/// ```
-/// // Execute function with no arguments
-/// db_run(handle, "rand::float", null)
-///
-/// // Execute function with arguments
-/// db_run(handle, "string::uppercase", "[\"hello\"]")
-/// ```
-#[no_mangle]
-pub extern "C" fn db_run(handle: *mut Database, function: *const c_char, args: *const c_char) -> *mut Response {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return std::ptr::null_mut();
-        }
-
-        if function.is_null() {
-            set_last_error("Function name cannot be null");
-            return std::ptr::null_mut();
-        }
-
-        let function_str = unsafe {
-            match CStr::from_ptr(function).to_str() {
-                Ok(s) => s,
-                Err(_) => {
-                    set_last_error("Invalid UTF-8 in function name");
-                    return std::ptr::null_mut();
-                }
-            }
-        };
-
-        // Validate function name is not empty
-        if function_str.trim().is_empty() {
-            set_last_error("Function name cannot be empty");
-            return std::ptr::null_mut();
-        }
-
-        // Parse args if provided
-        let args_vec: Vec<Value> = if args.is_null() {
-            Vec::new()
-        } else {
-            let args_str = unsafe {
-                match CStr::from_ptr(args).to_str() {
-                    Ok(s) => s,
-                    Err(_) => {
-                        set_last_error("Invalid UTF-8 in arguments");
-                        return std::ptr::null_mut();
-                    }
-                }
-            };
-
-            // Skip parsing if empty string
-            if args_str.trim().is_empty() {
-                Vec::new()
-            } else {
-                match serde_json::from_str::<Vec<Value>>(args_str) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        set_last_error(&format!("Invalid JSON array in arguments: {}", e));
-                        return std::ptr::null_mut();
-                    }
-                }
-            }
-        };
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        // Build query string with RETURN statement
-        // RETURN executes the function and returns its result
-        let query_sql = if args_vec.is_empty() {
-            format!("RETURN {}()", function_str)
-        } else {
-            // Serialize args back to JSON for embedding in query
-            let args_json = match serde_json::to_string(&args_vec) {
-                Ok(json) => json,
-                Err(e) => {
-                    set_last_error(&format!("Failed to serialize arguments: {}", e));
-                    return std::ptr::null_mut();
-                }
-            };
-            // Remove the array brackets and use the args directly
-            let args_str = &args_json[1..args_json.len()-1];
-            format!("RETURN {}({})", function_str, args_str)
-        };
-
-        match runtime.block_on(async {
-            db.inner.query(&query_sql).await
-        }) {
-            Ok(mut response) => {
-                let mut results = Vec::new();
-                let mut errors = Vec::new();
-
-                let num_statements = response.num_statements();
-
-                // Extract errors
-                let error_map = response.take_errors();
-                for (idx, err) in error_map {
-                    errors.push(format!("Statement {}: {}", idx, err));
-                }
-
-                // Extract results and unwrap using manual unwrapper
-                for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
-                        Ok(value) => {
-                            match surreal_value_to_json(&value) {
-                                Ok(json_value) => results.push(json_value),
-                                Err(e) => {
-                                    errors.push(format!("Failed to convert result: {}", e));
-                                    results.push(Value::Null);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            if !errors.iter().any(|err_msg| err_msg.contains(&format!("Statement {}:", idx))) {
-                                errors.push(format!("Failed to extract result: {}", e));
-                            }
-                            results.push(Value::Null);
-                        }
-                    }
-                }
-
-                let response_obj = Box::new(Response { results, errors });
-                Box::into_raw(response_obj)
-            }
-            Err(e) => {
-                set_last_error(&format!("Function execution failed: {}", e));
-                std::ptr::null_mut()
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_run");
-            std::ptr::null_mut()
-        }
-    }
-}
-
-/// Get the database version
-///
-/// # Arguments
-/// * `handle` - Pointer to Database instance
-///
-/// # Returns
-/// Pointer to C string containing the version (e.g., "1.5.0"), or null on failure
-/// The caller is responsible for freeing the returned string via free_string()
-///
-/// # Safety
-/// - handle must be a valid pointer obtained from db_new()
-/// - Returned pointer must be freed to avoid memory leaks
-/// - Passing null returns null
-///
-/// # Errors
-/// Returns null and sets last error if:
-/// - handle is null
-/// - Version query fails
-#[no_mangle]
-pub extern "C" fn db_version(handle: *mut Database) -> *mut c_char {
-    match panic::catch_unwind(|| {
-        if handle.is_null() {
-            set_last_error("Database handle cannot be null");
-            return std::ptr::null_mut();
-        }
-
-        let db = unsafe { &mut *handle };
-        let runtime = get_runtime();
-
-        // Execute version query
-        match runtime.block_on(async {
-            db.inner.version().await
-        }) {
-            Ok(version) => {
-                // Convert version string to CString
-                match CString::new(version.to_string()) {
-                    Ok(c_str) => c_str.into_raw(),
-                    Err(_) => {
-                        set_last_error("Failed to create C string from version");
-                        std::ptr::null_mut()
-                    }
-                }
-            }
-            Err(e) => {
-                set_last_error(&format!("Failed to get version: {}", e));
-                std::ptr::null_mut()
-            }
-        }
-    }) {
-        Ok(result) => result,
-        Err(_) => {
-            set_last_error("Panic occurred in db_version");
             std::ptr::null_mut()
         }
     }
