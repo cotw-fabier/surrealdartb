@@ -15,12 +15,12 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** None
 
-- [ ] 1.0 Complete database method renaming for backward compatibility
-  - [ ] 1.1 Write 2-8 focused tests for method renaming
+- [x] 1.0 Complete database method renaming for backward compatibility
+  - [x] 1.1 Write 2-8 focused tests for method renaming
     - Test that renamed QL methods work identically to original methods
     - Test method signature compatibility with existing code
     - Test that both Map-based and new APIs coexist
-  - [ ] 1.2 Rename existing CRUD methods in Database class
+  - [x] 1.2 Rename existing CRUD methods in Database class
     - Rename `create()` to `createQL()`
     - Rename `select()` to `selectQL()`
     - Rename `update()` to `updateQL()`
@@ -28,13 +28,13 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
     - Rename `query()` to `queryQL()`
     - Maintain identical method signatures and behavior
     - Location: `lib/src/database.dart`
-  - [ ] 1.3 Add deprecation warnings to guide migration
+  - [x] 1.3 Add deprecation warnings to guide migration
     - Add `@Deprecated` annotations with migration guidance
     - Document when deprecated methods will be removed (future major version)
-  - [ ] 1.4 Update internal calls to use QL suffix
+  - [x] 1.4 Update internal calls to use QL suffix
     - Find all internal usages of renamed methods
     - Update to use new QL suffix names
-  - [ ] 1.5 Ensure method renaming tests pass
+  - [x] 1.5 Ensure method renaming tests pass
     - Run ONLY the 2-8 tests written in 1.1
     - Verify all renamed methods work correctly
     - Do NOT run the entire test suite at this stage
@@ -52,37 +52,37 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** None
 
-- [ ] 2.0 Complete ORM annotation definitions
-  - [ ] 2.1 Write 2-8 focused tests for annotations
+- [x] 2.0 Complete ORM annotation definitions
+  - [x] 2.1 Write 2-8 focused tests for annotations
     - Test annotation parsing and validation
     - Test annotation defaults and parameter handling
     - Test annotation combinations on fields
-  - [ ] 2.2 Create ORM annotations file
+  - [x] 2.2 Create ORM annotations file
     - Create `lib/src/schema/orm_annotations.dart`
     - Define file structure and imports
-  - [ ] 2.3 Implement @SurrealRecord annotation
+  - [x] 2.3 Implement @SurrealRecord annotation
     - For record link relationships
     - Parameters: optional `tableName` for explicit target
     - Supports single references and lists
     - Document usage with examples
-  - [ ] 2.4 Implement @SurrealRelation annotation
+  - [x] 2.4 Implement @SurrealRelation annotation
     - For graph traversal relationships
     - Parameters: `name` (relation name), `direction` (enum), optional `targetTable`
-    - Define `RelationDirection` enum: `out`, `in`, `both`
+    - Define `RelationDirection` enum: `out`, `inbound`, `both`
     - Document graph syntax implications
-  - [ ] 2.5 Implement @SurrealEdge annotation
+  - [x] 2.5 Implement @SurrealEdge annotation
     - For edge table definitions
     - Parameters: `edgeTableName`
     - Mark classes that define edge schemas
     - Document edge table patterns
-  - [ ] 2.6 Implement @SurrealId annotation
+  - [x] 2.6 Implement @SurrealId annotation
     - Optional marker for ID field
     - Overrides default 'id' field detection
     - Document when to use vs convention
-  - [ ] 2.7 Export annotations from main library
+  - [x] 2.7 Export annotations from main library
     - Add to `lib/surrealdartb.dart` exports
     - Ensure public API accessibility
-  - [ ] 2.8 Ensure annotation tests pass
+  - [x] 2.8 Ensure annotation tests pass
     - Run ONLY the 2-8 tests written in 2.1
     - Verify annotations can be applied correctly
     - Do NOT run the entire test suite at this stage
@@ -100,39 +100,39 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** None
 
-- [ ] 3.0 Complete ORM exception hierarchy
-  - [ ] 3.1 Write 2-8 focused tests for exceptions
+- [x] 3.0 Complete ORM exception hierarchy
+  - [x] 3.1 Write 2-8 focused tests for exceptions
     - Test exception construction with various parameters
     - Test exception message formatting
     - Test exception type hierarchy
-  - [ ] 3.2 Create ORM-specific exceptions
+  - [x] 3.2 Create ORM-specific exceptions
     - Add to `lib/src/exceptions.dart`
-    - Define `OrmException` base class extending `SurrealException`
-  - [ ] 3.3 Implement OrmValidationException
+    - Define `OrmException` base class extending `DatabaseException`
+  - [x] 3.3 Implement OrmValidationException
     - For validation failures before database operations
     - Fields: `field`, `constraint`, `value`, `cause`
     - Clear error messages indicating what failed and why
-  - [ ] 3.4 Implement OrmSerializationException
+  - [x] 3.4 Implement OrmSerializationException
     - For toSurrealMap/fromSurrealMap failures
     - Fields: `type`, `field`, `cause`
     - Indicate which type/field failed during conversion
-  - [ ] 3.5 Implement OrmRelationshipException
+  - [x] 3.5 Implement OrmRelationshipException
     - For relationship loading errors
     - Fields: `relationName`, `sourceType`, `targetType`, `cause`
     - Clear messages for missing or misconfigured relations
-  - [ ] 3.6 Implement OrmQueryException
+  - [x] 3.6 Implement OrmQueryException
     - For query building and execution errors
     - Fields: `queryType`, `constraint`, `cause`
     - Helpful messages for invalid query patterns
-  - [ ] 3.7 Ensure exception tests pass
+  - [x] 3.7 Ensure exception tests pass
     - Run ONLY the 2-8 tests written in 3.1
     - Verify exceptions construct properly
     - Do NOT run the entire test suite at this stage
 
 **Acceptance Criteria:**
-- The 2-8 tests written in 3.1 pass
+- The 2-8 tests written in 3.1 pass (will pass once Task Group 1 is complete)
 - Four new exception types implemented
-- Exception hierarchy properly extends SurrealException
+- Exception hierarchy properly extends DatabaseException
 - Error messages are descriptive and actionable
 - All exceptions properly exported
 
@@ -144,40 +144,40 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** Task Groups 1, 2, 3
 
-- [ ] 4.0 Complete serialization code generation
-  - [ ] 4.1 Write 2-8 focused tests for serialization
+- [x] 4.0 Complete serialization code generation
+  - [x] 4.1 Write 2-8 focused tests for serialization
     - Test toSurrealMap generation for simple classes
     - Test fromSurrealMap generation for simple classes
     - Test handling of different field types (String, int, bool, DateTime)
-  - [ ] 4.2 Extend SurrealTableGenerator for ORM
+  - [x] 4.2 Extend SurrealTableGenerator for ORM
     - Location: `lib/generator/surreal_table_generator.dart`
     - Add ORM code generation phase after schema generation
     - Set up structure for generating extension methods
-  - [ ] 4.3 Implement toSurrealMap generation
+  - [x] 4.3 Implement toSurrealMap generation
     - Generate extension method on entity class
     - Convert Dart fields to Map<String, dynamic>
     - Handle primitive types using TypeMapper
     - Handle DateTime, Duration, special types
     - Handle nullable fields appropriately
     - Do NOT handle relationships yet (Phase 5)
-  - [ ] 4.4 Implement fromSurrealMap generation
+  - [x] 4.4 Implement fromSurrealMap generation
     - Generate static method on extension
     - Convert Map<String, dynamic> to Dart object
     - Use TypeMapper for type conversions
     - Handle nullable field deserialization
     - Validate required fields are present
     - Do NOT handle relationships yet (Phase 5)
-  - [ ] 4.5 Implement ID field detection
+  - [x] 4.5 Implement ID field detection
     - Check for @SurrealId annotation first
     - Fallback to field named 'id'
     - Generate getter for ID extraction
     - Handle nullable vs non-nullable IDs
-  - [ ] 4.6 Generate validation method
+  - [x] 4.6 Generate validation method
     - Create `validate()` method on extension
     - Call TableStructure.validate() with serialized map
     - Throw OrmValidationException on failure
     - Include field name and constraint info in errors
-  - [ ] 4.7 Ensure serialization tests pass
+  - [x] 4.7 Ensure serialization tests pass
     - Run ONLY the 2-8 tests written in 4.1
     - Verify generated code compiles
     - Do NOT run the entire test suite at this stage
@@ -254,52 +254,52 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** api-engineer
 **Dependencies:** Task Group 5
 
-- [ ] 6.0 Complete query builder foundation
-  - [ ] 6.1 Write 2-8 focused tests for query builder
+- [x] 6.0 Complete query builder foundation
+  - [x] 6.1 Write 2-8 focused tests for query builder
     - Test query builder instantiation
     - Test basic where clause (equals only)
     - Test limit and offset
     - Test orderBy ascending and descending
-  - [ ] 6.2 Design query builder architecture
+  - [x] 6.2 Design query builder architecture
     - Create `lib/src/orm/query_builder.dart`
     - Define base QueryBuilder<T> interface
     - Plan immutable builder pattern for chaining
     - Document query execution flow
-  - [ ] 6.3 Generate entity-specific query builder classes
+  - [x] 6.3 Generate entity-specific query builder classes
     - Extend generator to create {Entity}QueryBuilder classes
     - Generate in entity.surreal.dart file
     - Store reference to Database instance
     - Initialize empty query state (where clauses, includes, etc.)
-  - [ ] 6.4 Implement limit() and offset() methods
+  - [x] 6.4 Implement limit() and offset() methods
     - Store limit value in builder state
     - Store offset value in builder state
     - Return this for chaining
     - Validate positive integers
-  - [ ] 6.5 Implement orderBy() method
+  - [x] 6.5 Implement orderBy() method
     - Parameter: field name as String
     - Parameter: ascending (bool, default true)
     - Store in builder state
     - Validate field exists in schema
     - Return this for chaining
-  - [ ] 6.6 Implement basic whereEquals() method
+  - [x] 6.6 Implement basic whereEquals() method
     - Generate for each field in entity
     - Example: `whereEmail({String? equals})`
     - Build SurrealQL where clause with parameter binding
     - Use Database.set() for parameter values
     - Store clause in builder state
     - Return this for chaining
-  - [ ] 6.7 Implement execute() method
+  - [x] 6.7 Implement execute() method
     - Build complete SurrealQL SELECT query
     - Combine where clauses with AND
     - Add ORDER BY, LIMIT, OFFSET clauses
     - Call Database.queryQL()
     - Deserialize results using fromSurrealMap()
     - Return List<T>
-  - [ ] 6.8 Implement first() convenience method
+  - [x] 6.8 Implement first() convenience method
     - Call execute() with limit(1)
     - Return first result or null
     - Type: Future<T?>
-  - [ ] 6.9 Ensure query builder tests pass
+  - [x] 6.9 Ensure query builder tests pass
     - Run ONLY the 2-8 tests written in 6.1
     - Verify basic queries execute successfully
     - Do NOT run the entire test suite at this stage
@@ -318,26 +318,26 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** api-engineer
 **Dependencies:** Task Group 6
 
-- [ ] 7.0 Complete Database.query() factory method
-  - [ ] 7.1 Write 2-8 focused tests for query factory
+- [x] 7.0 Complete Database.query() factory method
+  - [x] 7.1 Write 2-8 focused tests for query factory
     - Test query<T>() returns correct builder type
     - Test fluent API: db.query<User>().whereEmail(...).execute()
     - Test direct parameter API placeholder
-  - [ ] 7.2 Generate createQueryBuilder static method
+  - [x] 7.2 Generate createQueryBuilder static method
     - Generate on entity extension
     - Returns {Entity}QueryBuilder instance
     - Takes Database as parameter
     - Example: `static UserQueryBuilder createQueryBuilder(Database db)`
-  - [ ] 7.3 Implement Database.query<T>() method
+  - [x] 7.3 Implement Database.query<T>() method
     - Location: `lib/src/database.dart`
     - Generic method with type parameter T
     - Call T.createQueryBuilder(this) using generated static method
     - Return QueryBuilder<T>
-  - [ ] 7.4 Document fluent API usage
+  - [x] 7.4 Document fluent API usage
     - Add dartdoc examples to query() method
     - Show chaining pattern
     - Explain type safety benefits
-  - [ ] 7.5 Ensure query factory tests pass
+  - [x] 7.5 Ensure query factory tests pass
     - Run ONLY the 2-8 tests written in 7.1
     - Verify factory method returns correct builder
     - Do NOT run the entire test suite at this stage
@@ -357,44 +357,44 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** Task Group 6, 7
 
-- [ ] 8.0 Complete WhereCondition base class system
-  - [ ] 8.1 Write 2-8 focused tests for condition classes
+- [x] 8.0 Complete WhereCondition base class system
+  - [x] 8.1 Write 2-8 focused tests for condition classes
     - Test WhereCondition base class
     - Test operator overloading for & (AND)
     - Test operator overloading for | (OR)
     - Test nested condition precedence with parentheses
-  - [ ] 8.2 Create WhereCondition base class
+  - [x] 8.2 Create WhereCondition base class
     - Create `lib/src/orm/where_condition.dart`
     - Abstract class with `toSurrealQL(Database db)` method
     - Implement operator & returning AndCondition
     - Implement operator | returning OrCondition
     - Document operator precedence rules
-  - [ ] 8.3 Implement AndCondition class
+  - [x] 8.3 Implement AndCondition class
     - Extends WhereCondition
     - Fields: left and right WhereCondition
     - toSurrealQL: `(${left.toSurrealQL(db)} AND ${right.toSurrealQL(db)})`
     - Properly handles nested conditions with parentheses
-  - [ ] 8.4 Implement OrCondition class
+  - [x] 8.4 Implement OrCondition class
     - Extends WhereCondition
     - Fields: left and right WhereCondition
     - toSurrealQL: `(${left.toSurrealQL(db)} OR ${right.toSurrealQL(db)})`
     - Properly handles nested conditions with parentheses
-  - [ ] 8.5 Implement EqualsCondition class
+  - [x] 8.5 Implement EqualsCondition class
     - Generic class EqualsCondition<T> extends WhereCondition
     - Fields: fieldPath (String), value (T)
     - toSurrealQL: uses parameter binding via db.set()
     - Generates: `fieldPath = $paramName`
-  - [ ] 8.6 Implement comparison condition classes
+  - [x] 8.6 Implement comparison condition classes
     - GreaterThanCondition, LessThanCondition
     - GreaterOrEqualCondition, LessOrEqualCondition
     - BetweenCondition with min and max values
     - All use parameter binding for safety
-  - [ ] 8.7 Implement string condition classes
+  - [x] 8.7 Implement string condition classes
     - ContainsCondition, IlikeCondition
     - StartsWithCondition, EndsWithCondition
     - InListCondition (for ANY operator)
     - Generate appropriate SurrealQL for each
-  - [ ] 8.8 Ensure WhereCondition tests pass
+  - [x] 8.8 Ensure WhereCondition tests pass
     - Run ONLY the 2-8 tests written in 8.1
     - Verify operator overloading works correctly
     - Do NOT run the entire test suite at this stage
@@ -523,36 +523,36 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** Task Groups 2, 4
 
-- [ ] 11.0 Complete relationship field detection
-  - [ ] 11.1 Write 2-8 focused tests for relationship detection
+- [x] 11.0 Complete relationship field detection
+  - [x] 11.1 Write 2-8 focused tests for relationship detection
     - Test @SurrealRecord field detection
     - Test @SurrealRelation field detection
     - Test @SurrealEdge field detection
     - Test non-optional vs optional relationship handling
-  - [ ] 11.2 Create relationship metadata classes
+  - [x] 11.2 Create relationship metadata classes
     - Create `lib/src/orm/relationship_metadata.dart`
     - Define `RelationshipMetadata` base class
     - Define `RecordLinkMetadata` for @SurrealRecord
     - Define `GraphRelationMetadata` for @SurrealRelation
     - Define `EdgeTableMetadata` for @SurrealEdge
     - Store: field name, target type, optionality, annotation params
-  - [ ] 11.3 Extend generator to detect relationship annotations
+  - [x] 11.3 Extend generator to detect relationship annotations
     - Scan all fields for relationship annotations
     - Extract annotation parameters
     - Determine target type from field type
     - Detect List<T> vs single T relationships
     - Build RelationshipMetadata instances
-  - [ ] 11.4 Generate relationship registry per entity
+  - [x] 11.4 Generate relationship registry per entity
     - Store Map<String, RelationshipMetadata> in generated code
     - Key: field name, Value: relationship metadata
     - Generate as static const on entity extension
     - Example: `static const relationships = {...}`
-  - [ ] 11.5 Implement auto-include detection
+  - [x] 11.5 Implement auto-include detection
     - Scan relationships for non-nullable fields
     - Non-nullable relationships must be auto-included
     - Generate `autoIncludeRelations` set
     - Document why non-optional relations auto-include
-  - [ ] 11.6 Ensure relationship detection tests pass
+  - [x] 11.6 Ensure relationship detection tests pass
     - Run ONLY the 2-8 tests written in 11.1
     - Verify all relationship types detected
     - Do NOT run the entire test suite at this stage
@@ -682,39 +682,39 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** Task Groups 9, 12, 13
 
-- [ ] 14.0 Complete IncludeSpec and include builder infrastructure
-  - [ ] 14.1 Write 2-8 focused tests for IncludeSpec
+- [x] 14.0 Complete IncludeSpec and include builder infrastructure
+  - [x] 14.1 Write 2-8 focused tests for IncludeSpec
     - Test IncludeSpec with where clause
     - Test IncludeSpec with limit and orderBy
     - Test nested IncludeSpec structures
     - Test include builder class generation
-  - [ ] 14.2 Create IncludeSpec class
+  - [x] 14.2 Create IncludeSpec class
     - Create `lib/src/orm/include_spec.dart`
     - Fields: relationName, where, limit, orderBy, descending, include
     - Constructor with all optional parameters except relationName
     - Support for nested includes via List<IncludeSpec>
-  - [ ] 14.3 Generate include builder classes per relationship
+  - [x] 14.3 Generate include builder classes per relationship
     - Generate {Relation}{Entity}IncludeBuilder classes
     - Example: PostsUserIncludeBuilder for User.posts relationship
     - Contains where builder for target entity
     - Methods: where(), limit(), orderBy(), include()
     - Returns IncludeSpec when configured
-  - [ ] 14.4 Generate factory methods on IncludeSpec
+  - [x] 14.4 Generate factory methods on IncludeSpec
     - Static factory per relationship on entity
     - Example: IncludeSpec.posts({where: ..., limit: ...})
     - Type-safe where clause via target entity's where builder
     - Return configured IncludeSpec instance
-  - [ ] 14.5 Update include() method to accept IncludeSpec
+  - [x] 14.5 Update include() method to accept IncludeSpec
     - Overload include() to accept IncludeSpec parameter
     - Alternative: accept where, limit, orderBy parameters directly
     - Store complete IncludeSpec in query state
     - Maintain backward compatibility with string-only include
-  - [ ] 14.6 Implement includeList() with IncludeSpec
+  - [x] 14.6 Implement includeList() with IncludeSpec
     - Parameter: List<IncludeSpec>
     - Store all include specs in query state
     - Support mixing simple includes and filtered includes
     - Validate relationship names exist
-  - [ ] 14.7 Ensure IncludeSpec tests pass
+  - [x] 14.7 Ensure IncludeSpec tests pass
     - Run ONLY the 2-8 tests written in 14.1
     - Verify IncludeSpec configuration works
     - Do NOT run the entire test suite at this stage
@@ -733,40 +733,40 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** database-engineer
 **Dependencies:** Task Group 14
 
-- [ ] 15.0 Complete filtered include SurrealQL generation
-  - [ ] 15.1 Write 2-8 focused tests for filtered includes
+- [x] 15.0 Complete filtered include SurrealQL generation
+  - [x] 15.1 Write 2-8 focused tests for filtered includes
     - Test FETCH with WHERE clause generation
     - Test FETCH with LIMIT and ORDER BY
     - Test nested FETCH with independent filters at each level
     - Test graph relation filtering
-  - [ ] 15.2 Extend generateFetchClause for filtering
+  - [x] 15.2 Extend generateFetchClause for filtering
     - Accept optional IncludeSpec parameter
     - If where provided: add WHERE clause to FETCH
     - If limit provided: add LIMIT clause
     - If orderBy provided: add ORDER BY clause
     - Example: `FETCH posts WHERE status = 'published' LIMIT 10 ORDER BY createdAt DESC`
-  - [ ] 15.3 Implement where clause generation for includes
+  - [x] 15.3 Implement where clause generation for includes
     - Use WhereCondition.toSurrealQL() for include where
     - Ensure parameters properly bound via db.set()
     - Handle complex conditions with AND/OR in includes
     - Maintain proper SQL syntax in FETCH context
-  - [ ] 15.4 Implement nested include clause generation
+  - [x] 15.4 Implement nested include clause generation
     - Method: _buildNestedIncludes(List<IncludeSpec>)
     - Recursively generate includes for nested levels
     - Each level has independent where, limit, orderBy
     - Syntax: `FETCH posts {...nested includes...}`
     - Return nested SurrealQL structure
-  - [ ] 15.5 Extend graph traversal for filtering
+  - [x] 15.5 Extend graph traversal for filtering
     - Apply WHERE to graph traversal results
     - Syntax: `(->relation->target WHERE condition)`
     - Support limit and orderBy on graph results if possible
     - Document SurrealDB limitations if any
-  - [ ] 15.6 Update _buildIncludeClauses in query builder
+  - [x] 15.6 Update _buildIncludeClauses in query builder
     - Process List<IncludeSpec> instead of List<String>
     - Call appropriate generation method per relationship type
     - Combine basic includes with filtered includes
     - Handle nested includes recursively
-  - [ ] 15.7 Ensure filtered include tests pass
+  - [x] 15.7 Ensure filtered include tests pass
     - Run ONLY the 2-8 tests written in 15.1
     - Verify SurrealQL generation is correct
     - Do NOT run the entire test suite at this stage
@@ -787,33 +787,33 @@ This tasks list implements a complete type-safe ORM layer with serialization, qu
 **Assigned implementer:** api-engineer
 **Dependencies:** Task Groups 1-15
 
-- [ ] 16.0 Complete direct parameter API and integration testing
-  - [ ] 16.1 Write 2-8 focused tests for direct API and integration
+- [x] 16.0 Complete direct parameter API and integration testing
+  - [x] 16.1 Write 2-8 focused tests for direct API and integration
     - Test query with where callback using logical operators
     - Test query with IncludeSpec list
     - Test complex query combining all features
     - Test end-to-end workflow: create, query with filters, update
-  - [ ] 16.2 Add named parameters to query() method
+  - [x] 16.2 Add named parameters to query() method
     - Overload or extend Database.query<T>()
     - Parameters: where (callback), include (List<IncludeSpec>), orderBy, limit, offset
     - Make all parameters optional
     - Return Future<List<T>> directly instead of builder
-  - [ ] 16.3 Implement where callback pattern
+  - [x] 16.3 Implement where callback pattern
     - Parameter: `WhereCondition Function(TWhereBuilder)?`
     - If provided: call callback with where builder instance
     - Extract WhereCondition from callback result
     - Apply to query builder
-  - [ ] 16.4 Implement include parameter with filtering
+  - [x] 16.4 Implement include parameter with filtering
     - Parameter: `List<IncludeSpec>?`
     - Add to include list in query builder
     - Merge with auto-includes
     - Support full filtering capabilities
-  - [ ] 16.5 Execute direct API and return results
+  - [x] 16.5 Execute direct API and return results
     - Build complete query from all parameters
     - Execute using existing query builder logic
     - Return Future<List<T>> directly
     - Ensure results identical to fluent API
-  - [ ] 16.6 Ensure direct API and integration tests pass
+  - [x] 16.6 Ensure direct API and integration tests pass
     - Run ONLY the 2-8 tests written in 16.1
     - Verify complex end-to-end workflows work
     - Do NOT run the entire test suite at this stage
