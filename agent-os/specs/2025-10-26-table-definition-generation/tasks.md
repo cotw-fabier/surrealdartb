@@ -18,29 +18,29 @@ This feature enables automatic SurrealDB table definition generation from annota
 **Complexity:** Medium
 **Estimated Duration:** 2-3 days
 
-- [ ] 1.1.0 Complete annotation system and basic generator
-  - [ ] 1.1.1 Write 2-8 focused tests for annotation classes
+- [x] 1.1.0 Complete annotation system and basic generator
+  - [x] 1.1.1 Write 2-8 focused tests for annotation classes
     - Test SurrealTable annotation parsing
     - Test SurrealField annotation with all parameters
     - Test JsonField annotation
     - Verify annotation validation and error messages
-  - [ ] 1.1.2 Create annotation classes in `lib/src/schema/annotations.dart`
+  - [x] 1.1.2 Create annotation classes in `lib/src/schema/annotations.dart`
     - Implement `@SurrealTable(tableName)` decorator
-    - Implement `@SurrealField()` decorator with parameters: type, defaultValue, assert, indexed
+    - Implement `@SurrealField()` decorator with parameters: type, defaultValue, assertClause, indexed
     - Implement `@JsonField()` decorator for JSON serialization
     - Add validation for required parameters
     - Follow const constructor pattern for annotations
-  - [ ] 1.1.3 Set up build_runner infrastructure
+  - [x] 1.1.3 Set up build_runner infrastructure
     - Create `lib/generator/` directory structure
     - Configure `build.yaml` with generator settings
     - Create generator class extending `GeneratorForAnnotation<SurrealTable>`
     - Set up part file generation pattern (`.surreal.dart`)
-  - [ ] 1.1.4 Implement annotation parser using analyzer package
+  - [x] 1.1.4 Implement annotation parser using analyzer package
     - Parse `@SurrealTable` to extract table name
     - Parse `@SurrealField` to extract field metadata
     - Validate mandatory field annotations
     - Extract class and field information from AST
-  - [ ] 1.1.5 Ensure annotation and parser tests pass
+  - [x] 1.1.5 Ensure annotation and parser tests pass
     - Run ONLY the 2-8 tests written in 1.1.1
     - Verify annotation parsing works correctly
     - Do NOT run entire test suite at this stage
@@ -59,8 +59,8 @@ This feature enables automatic SurrealDB table definition generation from annota
 **Complexity:** Medium
 **Estimated Duration:** 2-3 days
 
-- [ ] 1.2.0 Complete basic type mapping system
-  - [ ] 1.2.1 Write 2-8 focused tests for type mapper
+- [x] 1.2.0 Complete basic type mapping system
+  - [x] 1.2.1 Write 2-8 focused tests for type mapper
     - Test String → string mapping
     - Test int → int mapping
     - Test double → float mapping
@@ -68,7 +68,7 @@ This feature enables automatic SurrealDB table definition generation from annota
     - Test DateTime → datetime mapping
     - Test Duration → duration mapping
     - Test unknown type error handling
-  - [ ] 1.2.2 Create type mapper in `lib/generator/type_mapper.dart`
+  - [x] 1.2.2 Create type mapper in `lib/generator/type_mapper.dart`
     - Implement Dart primitive → SurrealDB type mapping
     - Map String → string
     - Map int → int
@@ -77,18 +77,18 @@ This feature enables automatic SurrealDB table definition generation from annota
     - Map DateTime → datetime
     - Map Duration → duration
     - Add error handling for unsupported types
-  - [ ] 1.2.3 Implement TableDefinition code generation
+  - [x] 1.2.3 Implement TableDefinition code generation
     - Generate immutable TableDefinition classes with const constructors
     - Generate FieldDefinition for each annotated field
     - Include type, defaultValue, and constraints in generated code
     - Follow existing TableStructure pattern in `lib/src/schema/` (reuse existing: TableStructure, FieldDefinition)
     - Ensure generated code is properly formatted
-  - [ ] 1.2.4 Generate sample output for validation
+  - [x] 1.2.4 Generate sample output for validation
     - Create test class with basic types
     - Run build_runner to generate `.surreal.dart` file
     - Verify generated code compiles
     - Verify generated code follows coding standards
-  - [ ] 1.2.5 Ensure type mapper tests pass
+  - [x] 1.2.5 Ensure type mapper tests pass
     - Run ONLY the 2-8 tests written in 1.2.1
     - Verify all basic type mappings work
     - Do NOT run entire test suite at this stage
@@ -164,7 +164,7 @@ This feature enables automatic SurrealDB table definition generation from annota
     - Generate `array<float, X>` type with dimension
     - Validate dimension is specified for vector types
   - [ ] 2.2.3 Implement ASSERT clause generation
-    - Parse assert parameter from @SurrealField
+    - Parse assertClause parameter from @SurrealField
     - Generate ASSERT syntax in TableDefinition
     - Support SurrealQL validation expressions
   - [ ] 2.2.4 Implement INDEX definition generation
@@ -777,14 +777,14 @@ This feature enables automatic SurrealDB table definition generation from annota
 
 **Developer Experience:**
 - Annotation-based schema definition reduces boilerplate by 50%+
-- Clear error messages guide developers to solutions
-- Dry run accurately previews production migrations
-- Documentation covers all common use cases
+- Schema changes are detected automatically with zero manual tracking
+- Destructive changes are prevented by default, protecting production data
+- Migration errors provide actionable guidance for resolution
 
 **Safety:**
-- Destructive operations blocked by default
-- Failed migrations automatically roll back
-- No partial migrations (all-or-nothing)
+- 100% of migrations execute in transactions with rollback support
+- Destructive operations require explicit opt-in flag
+- Failed migrations leave database in original state (no partial changes)
 - Migration history is complete and queryable
 
 ---

@@ -1,0 +1,28 @@
+# Build configuration for SurrealDB table definition generator
+#
+# This configures the build_runner to use our custom generator for
+# @SurrealTable annotated classes, generating .surreal.dart part files.
+
+targets:
+  $default:
+    builders:
+      surrealdartb|surreal_table_builder:
+        enabled: true
+        generate_for:
+          - lib/**/*.dart
+          - test/**/*.dart
+        options:
+          # Generate part files with .surreal.dart extension
+          # following json_serializable pattern
+          generate_part_file: true
+
+builders:
+  surreal_table_builder:
+    import: 'package:surrealdartb/generator/surreal_table_generator.dart'
+    builder_factories: ['surrealTableBuilder']
+    build_extensions:
+      .dart:
+        - .surreal.dart
+    auto_apply: dependents
+    build_to: source
+    applies_builders: []

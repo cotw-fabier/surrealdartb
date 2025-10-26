@@ -1,0 +1,39 @@
+task_assignments:
+  - task_group: "Task Group 1.1: Annotation System & Basic Generator"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 1.2: Basic Type Mapping & TableDefinition Generation"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 2.1: Collection & Nested Object Types"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 2.2: Vector Types & Schema Constraints"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 3.1: Schema Introspection"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3.2: Schema Diff Calculation"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.1: DDL Generation"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.2: Transaction-Based Migration Execution"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 5.1: Destructive Operation Protection"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 5.2: Manual Rollback Support"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 6.1: Database Class Integration"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 6.2: End-to-End Integration Testing"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 6.3: Documentation & Examples"
+    assigned_subagent: "database-engineer"
