@@ -1,6 +1,6 @@
 # SurrealDartB - Dart FFI Bindings for Embedded SurrealDB
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](CHANGELOG.md)
 [![Dart](https://img.shields.io/badge/dart-%3E%3D3.0.0-blue.svg)](https://dart.dev)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -9,7 +9,6 @@ A powerful Dart package providing native FFI bindings to embed [SurrealDB](https
 ## Features
 
 - **Embedded Database** - Run SurrealDB locally without external dependencies
-- **Table Generation & Migration** - Annotation-based schema definition with automatic migrations
 - **Vector Indexing** - Built-in support for AI/ML workflows with vector storage and similarity search
 - **Multiple Storage Backends** - In-memory for testing, RocksDB for persistence
 - **Full SurrealQL Support** - Execute complex queries, transactions, and graph operations
@@ -44,11 +43,10 @@ Add this package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  surrealdartb: ^1.2.0
+  surrealdartb: ^1.1.0
   ffi: ^2.1.0
 
 dev_dependencies:
-  build_runner: ^2.4.0  # For code generation
   hooks: ^0.20.4
   native_toolchain_rs:
     git:
@@ -235,228 +233,6 @@ print('Updated: ${updated['name']}');
 await db.delete('person:alice');
 print('Deleted person:alice');
 ```
-
-## Table Generation & Migration System
-
-**NEW in 1.2.0**: Define your database schema using annotations and let SurrealDartB automatically generate table definitions and manage migrations.
-
-### Quick Start with Table Generation
-
-#### Step 1: Define Your Schema with Annotations
-
-```dart
-import 'package:surrealdartb/surrealdartb.dart';
-
-@SurrealTable('users')
-class User {
-  @SurrealField(type: StringType())
-  final String name;
-
-  @SurrealField(
-    type: NumberType(format: NumberFormat.integer),
-    assertClause: r'$value >= 18',  // Database-level validation
-  )
-  final int age;
-
-  @SurrealField(
-    type: StringType(),
-    indexed: true,  // Create index for fast queries
-  )
-  final String email;
-
-  @SurrealField(
-    type: StringType(),
-    defaultValue: 'active',
-  )
-  final String status;
-}
-```
-
-#### Step 2: Generate Table Definitions
-
-```bash
-dart run build_runner build
-```
-
-This generates `user.surreal.dart` containing a `UserTableDef` class.
-
-#### Step 3: Use with Auto-Migration
-
-```dart
-// Development: Auto-migration enabled
-final db = await Database.connect(
-  backend: StorageBackend.memory,
-  namespace: 'dev',
-  database: 'dev',
-  tableDefinitions: [UserTableDef()],
-  autoMigrate: true,  // Schema syncs automatically!
-);
-
-// Production: Manual migration control
-final db = await Database.connect(
-  backend: StorageBackend.rocksdb,
-  path: '/data/production.db',
-  namespace: 'prod',
-  database: 'main',
-  tableDefinitions: [UserTableDef()],
-  autoMigrate: false,  // Manual control for safety
-);
-
-// Preview migration before applying
-final preview = await db.migrate(dryRun: true);
-print('Changes to apply: ${preview.generatedDDL}');
-
-// Apply migration
-if (preview.success && !preview.hasDestructiveChanges) {
-  await db.migrate(dryRun: false);
-  print('Migration applied successfully');
-}
-```
-
-### Key Features
-
-**Annotation-Based Schema Definition**
-- Define tables with `@SurrealTable`
-- Define fields with `@SurrealField`
-- Automatic type mapping (Dart ↔ SurrealDB)
-- Support for constraints (ASSERT), indexes, default values
-
-**Automatic Migration Detection**
-- Detects schema changes automatically
-- Classifies changes as safe or destructive
-- Generates appropriate DDL statements
-
-**Transaction Safety**
-- All migrations execute in transactions
-- Automatic rollback on failure
-- Atomic all-or-nothing execution
-
-**Production Controls**
-- Dry-run mode to preview changes
-- Manual migration approval
-- Destructive change protection
-- Complete migration history
-
-### Migration Workflows
-
-**Development Workflow (Fast Iteration):**
-```dart
-final db = await Database.connect(
-  backend: StorageBackend.memory,
-  tableDefinitions: [UserTableDef(), ProductTableDef()],
-  autoMigrate: true,  // Changes apply automatically
-);
-```
-
-**Production Workflow (Safe Deployment):**
-```dart
-// 1. Connect without auto-migration
-final db = await Database.connect(
-  backend: StorageBackend.rocksdb,
-  path: '/data/prod.db',
-  tableDefinitions: [UserTableDef(), ProductTableDef()],
-  autoMigrate: false,
-);
-
-// 2. Preview migration
-final preview = await db.migrate(dryRun: true);
-print('Tables to add: ${preview.tablesAdded}');
-print('Fields to add: ${preview.fieldsAdded}');
-print('Destructive: ${preview.hasDestructiveChanges}');
-
-// 3. Review and approve
-
-// 4. Apply migration
-final result = await db.migrate(
-  allowDestructiveMigrations: false,  // Block destructive changes
-  dryRun: false,
-);
-
-if (result.success) {
-  print('Migration successful');
-}
-```
-
-### Advanced Schema Features
-
-**Vector Fields for AI/ML:**
-```dart
-@SurrealField(
-  type: VectorType(format: VectorFormat.f32, dimensions: 384),
-  dimensions: 384,
-)
-final List<double> embedding;
-```
-
-**Nested Objects:**
-```dart
-@SurrealField(type: ObjectType())
-@JsonField()
-final Map<String, dynamic> metadata;
-```
-
-**Collections:**
-```dart
-@SurrealField(type: ArrayType(StringType()))
-final List<String> tags;
-```
-
-**Validation with ASSERT:**
-```dart
-@SurrealField(
-  type: StringType(),
-  assertClause: r'$value != NONE AND string::len($value) > 0',
-)
-final String email;
-```
-
-### Migration Safety
-
-**Safe Changes (Auto-Approved):**
-- Adding new tables
-- Adding new optional fields
-- Adding indexes
-- Adding default values
-
-**Destructive Changes (Require Permission):**
-- Removing tables
-- Removing fields
-- Changing field types
-- These require `allowDestructiveMigrations: true`
-
-**Transaction Safety:**
-```dart
-// All migrations execute in transactions:
-BEGIN TRANSACTION;
-  DEFINE TABLE users SCHEMAFULL;
-  DEFINE FIELD name ON users TYPE string;
-  DEFINE FIELD email ON users TYPE string;
-COMMIT TRANSACTION;  // or CANCEL on failure
-```
-
-### Documentation
-
-- **Full Migration Guide**: See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)
-- **Examples**: See `example/scenarios/table_generation_basic.dart`
-- **API Documentation**: Inline dartdoc comments on all public APIs
-
-### Known Limitations
-
-**Current Status (v1.2.0):**
-- ✅ Annotation system fully functional
-- ✅ Code generation working
-- ✅ Migration detection implemented
-- ✅ Transaction-based execution
-- ✅ ~130 tests passing (98% pass rate)
-
-**SurrealDB Compatibility Issues:**
-- ⚠️ Vector DDL syntax (`vector<F32, 384>`) not supported by current SurrealDB embedded version
-  - Workaround: Use `array<float>` type for vectors
-  - Full vector type support coming in future SurrealDB releases
-- ⚠️ Nested object access may return null in some queries
-  - Workaround: Use raw queries for complex nested structures
-
-These are SurrealDB embedded limitations, not package limitations. Core migration functionality is production-ready.
 
 ## Advanced CRUD Operations
 
@@ -846,7 +622,6 @@ This library currently focuses on **embedded mode** - running SurrealDB directly
 - Type-safe operations with RecordId, Datetime, SurrealDuration
 - Graph relationships and queries
 - Vector storage and operations
-- **Table generation and migrations**
 
 ### Embedded Mode Limitations
 
@@ -910,9 +685,6 @@ static Future<Database> connect({
   String? path,
   String? namespace,
   String? database,
-  List<TableStructure>? tableDefinitions,
-  bool autoMigrate = true,
-  bool allowDestructiveMigrations = false,
 })
 ```
 
@@ -921,32 +693,13 @@ static Future<Database> connect({
 - `path` - File path for RocksDB (required for rocksdb, ignored for memory)
 - `namespace` - Optional namespace to use after connection
 - `database` - Optional database to use after connection
-- `tableDefinitions` - Optional list of table definitions for auto-migration
-- `autoMigrate` - Whether to automatically apply schema migrations (default: true)
-- `allowDestructiveMigrations` - Whether to allow destructive migrations (default: false)
 
 **Returns:** Connected `Database` instance
 
 **Throws:**
 - `ArgumentError` if path is null for rocksdb backend
 - `ConnectionException` if connection fails
-- `MigrationException` if migration fails
 - `DatabaseException` for other errors
-
-#### Migration Operations
-
-**Manual migration:**
-```dart
-Future<MigrationReport> migrate({
-  bool dryRun = false,
-  bool allowDestructiveMigrations = false,
-})
-```
-
-**Rollback migration:**
-```dart
-Future<MigrationReport> rollbackMigration()
-```
 
 #### CRUD Operations
 
@@ -1064,30 +817,6 @@ if (response.hasErrors()) {
 }
 ```
 
-### MigrationReport Class
-
-Migration results are returned as a `MigrationReport`:
-
-```dart
-class MigrationReport {
-  bool success;                           // Did migration succeed?
-  bool dryRun;                           // Was this a dry-run?
-  String migrationId;                    // Unique migration identifier
-
-  List<String> tablesAdded;              // New tables created
-  List<String> tablesRemoved;            // Tables deleted (destructive)
-  Map<String, List<String>> fieldsAdded; // New fields per table
-  Map<String, List<String>> fieldsRemoved; // Deleted fields (destructive)
-  Map<String, List<String>> fieldsModified; // Changed fields (destructive)
-  Map<String, List<String>> indexesAdded; // New indexes
-  Map<String, List<String>> indexesRemoved; // Deleted indexes
-
-  List<String> generatedDDL;             // All SQL statements
-  bool hasDestructiveChanges;            // Requires permission?
-  String? errorMessage;                  // Error if success = false
-}
-```
-
 ### Exception Handling
 
 ```dart
@@ -1105,12 +834,6 @@ try {
 } on ParameterException catch (e) {
   // Parameter operation failed
   print('Parameter error: ${e.message}');
-} on MigrationException catch (e) {
-  // Migration failed
-  print('Migration error: ${e.message}');
-  if (e.isDestructive) {
-    print('Destructive changes require explicit permission');
-  }
 } on DatabaseException catch (e) {
   // General database error
   print('Database error: ${e.message}');
@@ -1121,47 +844,6 @@ try {
 ```
 
 ## Complete Examples
-
-### Table Generation & Migration
-
-```dart
-// Define schema with annotations
-@SurrealTable('documents')
-class Document {
-  @SurrealField(type: StringType())
-  final String title;
-
-  @SurrealField(type: StringType())
-  final String content;
-
-  @SurrealField(
-    type: VectorType(format: VectorFormat.f32, dimensions: 384),
-    dimensions: 384,
-  )
-  final List<double> embedding;
-
-  @SurrealField(type: ArrayType(StringType()))
-  final List<String> tags;
-}
-
-// Generate code: dart run build_runner build
-
-// Use with database
-final db = await Database.connect(
-  backend: StorageBackend.rocksdb,
-  path: '/data/docs.db',
-  tableDefinitions: [DocumentTableDef()],
-  autoMigrate: true,
-);
-
-// Schema automatically created!
-await db.create('documents', {
-  'title': 'ML Guide',
-  'content': 'Introduction to ML...',
-  'embedding': [0.1, 0.2, 0.3, ...],
-  'tags': ['ml', 'tutorial'],
-});
-```
 
 ### Vector Storage for AI/ML
 
@@ -1256,42 +938,6 @@ final profile = await db.get<Map<String, dynamic>>('user:me');
 await db.invalidate();
 ```
 
-### Production Migration Workflow
-
-```dart
-// 1. Connect without auto-migration
-final db = await Database.connect(
-  backend: StorageBackend.rocksdb,
-  path: '/data/production.db',
-  tableDefinitions: [UserTableDef(), ProductTableDef()],
-  autoMigrate: false,  // Manual control
-);
-
-// 2. Preview migration
-final preview = await db.migrate(dryRun: true);
-print('Tables to add: ${preview.tablesAdded}');
-print('Fields to add: ${preview.fieldsAdded}');
-print('Destructive: ${preview.hasDestructiveChanges}');
-
-// 3. Review generated DDL
-for (final ddl in preview.generatedDDL) {
-  print(ddl);
-}
-
-// 4. Apply if safe
-if (preview.success && !preview.hasDestructiveChanges) {
-  final result = await db.migrate(dryRun: false);
-  if (result.success) {
-    print('Migration applied: ${result.migrationId}');
-  }
-}
-
-// 5. Check migration history
-final history = await db.query(
-  'SELECT * FROM _migrations ORDER BY applied_at DESC LIMIT 5'
-);
-```
-
 ## Architecture
 
 ### FFI Stack
@@ -1331,7 +977,7 @@ final history = await db.query(
 
 ## Known Limitations
 
-Current version (1.2.0) focuses on core embedded database functionality with table generation:
+Current version (1.1.0) focuses on core embedded database functionality:
 
 **Implemented and Tested:**
 - Complete CRUD operations (create, select, update, delete, get)
@@ -1341,7 +987,6 @@ Current version (1.2.0) focuses on core embedded database functionality with tab
 - Function execution (run, version)
 - Type definitions (RecordId, Datetime, SurrealDuration, PatchOp, Jwt, Credentials)
 - Both storage backends (memory and RocksDB)
-- **Table generation & migrations** (annotation-based schema, auto-migration, transaction safety)
 
 **Under Testing (Available but not fully validated):**
 - Insert operations with builder pattern
@@ -1386,15 +1031,6 @@ final db = await Database.connect(...);  // Must await!
 
 **Solution**: Authentication has limitations in embedded mode. Check the "Embedded Mode Limitations" section for details.
 
-**Problem**: Migration fails with destructive changes
-
-**Solution**: Review changes with dry-run mode:
-```dart
-final preview = await db.migrate(dryRun: true);
-print('Destructive: ${preview.hasDestructiveChanges}');
-// Review, then use allowDestructiveMigrations: true if needed
-```
-
 ### Performance Issues
 
 **Problem**: Database operations seem slow
@@ -1407,22 +1043,7 @@ print('Destructive: ${preview.hasDestructiveChanges}');
 
 ## Recent Updates
 
-### Version 1.2.0 (Latest)
-
-**NEW: Table Generation & Migration System**
-- ✅ Annotation-based schema definition (`@SurrealTable`, `@SurrealField`)
-- ✅ Automatic code generation with build_runner
-- ✅ Intelligent migration detection (safe vs destructive changes)
-- ✅ Transaction-based migration execution with automatic rollback
-- ✅ Production controls (dry-run, manual approval, migration history)
-- ✅ ~130 tests (98% pass rate)
-- ✅ Complete migration guide and examples
-
-**Known Limitations:**
-- Vector DDL syntax compatibility issues with current SurrealDB embedded version
-- Nested object access may require raw queries in some cases
-
-### Version 1.1.0
+### Version 1.1.0 (Latest)
 
 - ✅ **Fixed critical deserialization bug** - Field values now appear correctly
 - ✅ **Comprehensive FFI safety audit** - Production-ready safety guarantees
@@ -1447,7 +1068,6 @@ Contributions are welcome! This project aims for 1:1 API parity with the Surreal
 - Vector indexing features
 - Live query implementation
 - Documentation improvements
-- Migration system enhancements
 
 ## License
 
@@ -1462,7 +1082,3 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 **Questions or Issues?** Open an issue on GitHub or check the [example app](example/) for working code samples.
-
-**Documentation:**
-- [Migration Guide](MIGRATION_GUIDE.md) - Complete guide for production migrations
-- [Examples](example/scenarios/) - Working code examples for all features

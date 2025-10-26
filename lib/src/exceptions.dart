@@ -429,3 +429,176 @@ class ValidationException extends DatabaseException {
     return buffer.toString();
   }
 }
+
+/// Exception thrown when schema introspection fails.
+///
+/// This exception is thrown when the system fails to query or parse
+/// database schema information using INFO FOR DB or INFO FOR TABLE queries.
+/// It provides clear diagnostic information about what went wrong during
+/// schema discovery.
+///
+/// This is used by the migration detection system when introspecting
+/// the current database schema to compare with code-defined schemas.
+///
+/// Example:
+/// ```dart
+/// try {
+///   final snapshot = await DatabaseSchema.introspect(db);
+/// } catch (e) {
+///   if (e is SchemaIntrospectionException) {
+///     print('Failed to introspect schema: ${e.message}');
+///   }
+/// }
+/// ```
+class SchemaIntrospectionException extends DatabaseException {
+  /// Creates a schema introspection exception.
+  ///
+  /// [message] - Human-readable description of the introspection failure
+  /// [errorCode] - Optional error code from the native layer
+  /// [nativeStackTrace] - Optional stack trace from native code
+  SchemaIntrospectionException(
+    super.message, {
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('SchemaIntrospectionException: $message');
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+    return buffer.toString();
+  }
+}
+
+/// Exception thrown when a schema migration operation fails.
+///
+/// This exception is thrown when the migration system encounters errors
+/// during schema migration execution, including:
+/// - Destructive schema changes without explicit permission
+/// - Migration execution failures
+/// - DDL generation errors
+/// - Transaction failures during migration
+///
+/// This exception includes a migration report with detailed information
+/// about the attempted changes and a flag indicating if destructive
+/// changes were involved.
+///
+/// Example:
+/// ```dart
+/// try {
+///   await engine.executeMigration(db, tables);
+/// } catch (e) {
+///   if (e is MigrationException) {
+///     print('Migration failed: ${e.message}');
+///     if (e.isDestructive) {
+///       print('Destructive changes detected:');
+///       if (e.report != null) {
+///         for (final table in e.report!.tablesRemoved) {
+///           print('  - Table "$table" will be removed');
+///         }
+///       }
+///     }
+///   }
+/// }
+/// ```
+class MigrationException extends DatabaseException {
+  /// Creates a migration exception.
+  ///
+  /// [message] - Human-readable description of the migration failure
+  /// [report] - Optional migration report with detailed change information
+  /// [isDestructive] - Whether the migration involves destructive changes
+  /// [errorCode] - Optional error code from the native layer
+  /// [nativeStackTrace] - Optional stack trace from native code
+  MigrationException(
+    super.message, {
+    this.report,
+    this.isDestructive = false,
+    super.errorCode,
+    super.nativeStackTrace,
+  });
+
+  /// The migration report with detailed change information, if available.
+  ///
+  /// This provides information about tables, fields, and indexes that
+  /// would be added, removed, or modified during the migration.
+  final MigrationReport? report;
+
+  /// Whether the migration involves destructive changes.
+  ///
+  /// Destructive changes include:
+  /// - Removing tables
+  /// - Removing fields
+  /// - Changing field types
+  /// - Making optional fields required
+  final bool isDestructive;
+
+  @override
+  String toString() {
+    // If the message already contains detailed information (from analyzer),
+    // just return it with the exception prefix
+    if (message.contains('DESTRUCTIVE CHANGES:')) {
+      return 'MigrationException:\n$message';
+    }
+
+    final buffer = StringBuffer('MigrationException: $message');
+
+    if (isDestructive) {
+      buffer.write(' [DESTRUCTIVE]');
+    }
+
+    if (errorCode != null) {
+      buffer.write(' (error code: $errorCode)');
+    }
+
+    if (report != null && isDestructive) {
+      buffer.write('\n\nDestructive changes detected:');
+
+      if (report!.tablesRemoved.isNotEmpty) {
+        buffer.write('\n  Tables to be removed:');
+        for (final table in report!.tablesRemoved) {
+          buffer.write('\n    - $table');
+        }
+      }
+
+      if (report!.fieldsRemoved.isNotEmpty) {
+        buffer.write('\n  Fields to be removed:');
+        for (final entry in report!.fieldsRemoved.entries) {
+          for (final field in entry.value) {
+            buffer.write('\n    - ${entry.key}.$field');
+          }
+        }
+      }
+
+      buffer.write('\n\nTo apply these changes:');
+      buffer.write('\n  1. Set allowDestructiveMigrations: true');
+      buffer.write('\n  2. OR fix schema to match database');
+      buffer.write('\n  3. OR manually migrate data before applying changes');
+    }
+
+    if (nativeStackTrace != null) {
+      buffer.write('\nNative stack trace:\n$nativeStackTrace');
+    }
+
+    return buffer.toString();
+  }
+}
+
+/// Migration report class (forward reference for MigrationException).
+///
+/// This is a placeholder to avoid circular dependencies.
+/// The actual implementation is in migration_engine.dart.
+abstract class MigrationReport {
+  /// List of tables that were removed.
+  List<String> get tablesRemoved;
+
+  /// Map of table names to lists of fields removed.
+  Map<String, List<String>> get fieldsRemoved;
+
+  /// Whether the migration involves destructive changes.
+  bool get hasDestructiveChanges;
+}

@@ -46,12 +46,18 @@ Builder surrealTableBuilder(BuilderOptions options) =>
 /// });
 /// ```
 class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
+  /// Track visited types to detect circular references.
+  final Set<String> _visitedTypes = {};
+
   @override
   String generateForAnnotatedElement(
     Element element,
     ConstantReader annotation,
     BuildStep buildStep,
   ) {
+    // Clear visited types for each new table generation
+    _visitedTypes.clear();
+
     // Validate that the annotation is on a class
     if (element is! ClassElement) {
       throw InvalidGenerationSourceError(
@@ -113,6 +119,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   /// - Assert clause
   /// - Indexed flag
   /// - Dimensions (for vector types)
+  /// - Nested object schema (for custom classes)
   List<_FieldInfo> _extractFields(ClassElement classElement) {
     final fields = <_FieldInfo>[];
 
@@ -142,6 +149,24 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
       final indexed = annotationReader.read('indexed').boolValue;
       final dimensions = annotationReader.read('dimensions');
 
+      // Check for nested object type - if it's ObjectType with schema
+      Map<String, _FieldInfo>? nestedSchema;
+      final typeName = typeObj.type?.element?.name;
+
+      // If the annotation specifies ObjectType and the field is a custom class,
+      // recursively extract nested schema
+      if (typeName == 'ObjectType') {
+        final fieldType = field.type;
+        if (fieldType is InterfaceType) {
+          final fieldClassElement = fieldType.element;
+          if (fieldClassElement is ClassElement &&
+              !_isBuiltInType(fieldClassElement.name)) {
+            // Recursive nested object extraction
+            nestedSchema = _extractNestedSchema(fieldClassElement);
+          }
+        }
+      }
+
       fields.add(_FieldInfo(
         name: field.name,
         type: typeObj,
@@ -150,6 +175,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
         assertClause: assertClause.isNull ? null : assertClause.stringValue,
         indexed: indexed,
         dimensions: dimensions.isNull ? null : dimensions.intValue,
+        nestedSchema: nestedSchema,
       ));
     }
 
@@ -162,6 +188,134 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     }
 
     return fields;
+  }
+
+  /// Checks if a type is a built-in Dart type.
+  bool _isBuiltInType(String typeName) {
+    const builtInTypes = {
+      'String',
+      'int',
+      'double',
+      'bool',
+      'DateTime',
+      'Duration',
+      'List',
+      'Set',
+      'Map',
+      'dynamic',
+      'Object',
+    };
+    return builtInTypes.contains(typeName);
+  }
+
+  /// Recursively extracts nested schema from a custom class.
+  ///
+  /// This method traverses nested classes to build complete schema definitions.
+  /// It detects circular references and throws an error if found.
+  Map<String, _FieldInfo>? _extractNestedSchema(ClassElement classElement) {
+    final className = classElement.name;
+
+    // Check for circular reference
+    if (_visitedTypes.contains(className)) {
+      throw InvalidGenerationSourceError(
+        'Circular reference detected: $className references itself. '
+        'Circular references are not supported in nested objects.',
+        element: classElement,
+      );
+    }
+
+    // Mark this type as visited
+    _visitedTypes.add(className);
+
+    try {
+      // Extract fields from nested class
+      // Note: We don't require @SurrealField on nested classes
+      // We extract all fields for nested object schema
+      final nestedFields = <String, _FieldInfo>{};
+
+      for (final field in classElement.fields) {
+        // Skip static fields
+        if (field.isStatic) continue;
+
+        // For nested objects, we create implicit field definitions
+        // based on Dart types
+        final fieldType = field.type;
+        final isOptional =
+            fieldType.nullabilitySuffix == NullabilitySuffix.question;
+
+        // Create a synthetic type object for the field
+        // This is a simplified approach - in production, we'd want more
+        // sophisticated type inference
+        final typeExpr = _inferTypeFromDartType(fieldType);
+
+        // Check if this field is also a custom class
+        Map<String, _FieldInfo>? subSchema;
+        if (fieldType is InterfaceType) {
+          final element = fieldType.element;
+          if (element is ClassElement && !_isBuiltInType(element.name)) {
+            subSchema = _extractNestedSchema(element);
+          }
+        }
+
+        nestedFields[field.name] = _FieldInfo(
+          name: field.name,
+          type: null, // Type will be inferred
+          isOptional: isOptional,
+          defaultValue: null,
+          assertClause: null,
+          indexed: false,
+          dimensions: null,
+          nestedSchema: subSchema,
+          inferredTypeExpr: typeExpr,
+        );
+      }
+
+      return nestedFields.isEmpty ? null : nestedFields;
+    } finally {
+      // Remove from visited types after processing
+      _visitedTypes.remove(className);
+    }
+  }
+
+  /// Infers SurrealType expression from Dart type.
+  ///
+  /// This provides a best-effort mapping from Dart types to SurrealDB types
+  /// for nested objects that don't have explicit annotations.
+  String _inferTypeFromDartType(DartType dartType) {
+    final typeName = dartType.element?.name ?? 'dynamic';
+
+    // Basic type mappings
+    switch (typeName) {
+      case 'String':
+        return 'StringType()';
+      case 'int':
+        return 'NumberType(format: NumberFormat.integer)';
+      case 'double':
+        return 'NumberType(format: NumberFormat.floating)';
+      case 'bool':
+        return 'BoolType()';
+      case 'DateTime':
+        return 'DatetimeType()';
+      case 'Duration':
+        return 'DurationType()';
+      case 'List':
+        if (dartType is InterfaceType && dartType.typeArguments.isNotEmpty) {
+          final elementType = _inferTypeFromDartType(dartType.typeArguments[0]);
+          return 'ArrayType($elementType)';
+        }
+        return 'ArrayType(AnyType())';
+      case 'Set':
+        if (dartType is InterfaceType && dartType.typeArguments.isNotEmpty) {
+          final elementType = _inferTypeFromDartType(dartType.typeArguments[0]);
+          return 'ArrayType($elementType)';
+        }
+        return 'ArrayType(AnyType())';
+      case 'Map':
+        return 'ObjectType()';
+      default:
+        // Custom class or unknown type
+        return 'ObjectType()';
+    }
   }
 
   /// Generates the TableDefinition code.
@@ -189,23 +343,63 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 
     // Generate field definitions
     for (final field in fields) {
-      buffer.writeln('    \'${field.name}\': FieldDefinition(');
-      buffer.writeln('      ${_generateTypeExpression(field.type)},');
-
-      if (field.isOptional) {
-        buffer.writeln('      optional: true,');
-      }
-
-      if (field.defaultValue != null) {
-        buffer.writeln(
-            '      defaultValue: ${_generateDefaultValue(field.defaultValue!)},');
-      }
-
-      buffer.writeln('    ),');
+      buffer.write(_generateFieldDefinition(field, indent: 4));
     }
 
     buffer.writeln('  },');
     buffer.writeln(');');
+
+    return buffer.toString();
+  }
+
+  /// Generates a single field definition with proper formatting.
+  String _generateFieldDefinition(_FieldInfo field, {required int indent}) {
+    final buffer = StringBuffer();
+    final indentStr = ' ' * indent;
+
+    buffer.writeln("$indentStr'${field.name}': FieldDefinition(");
+
+    // Generate type expression
+    if (field.type != null) {
+      buffer.write('$indentStr  ${_generateTypeExpression(field.type!)}');
+    } else if (field.inferredTypeExpr != null) {
+      buffer.write('$indentStr  ${field.inferredTypeExpr}');
+    } else {
+      buffer.write('${indentStr}  AnyType()');
+    }
+
+    // Handle nested schema for ObjectType
+    if (field.nestedSchema != null) {
+      buffer.writeln(',');
+      buffer.writeln('${indentStr}  schema: {');
+      for (final nestedField in field.nestedSchema!.values) {
+        buffer.write(_generateFieldDefinition(nestedField, indent: indent + 4));
+      }
+      buffer.write('$indentStr  }');
+    }
+
+    buffer.writeln(',');
+
+    // Generate optional parameters
+    if (field.isOptional) {
+      buffer.writeln('$indentStr  optional: true,');
+    }
+
+    if (field.defaultValue != null) {
+      buffer.writeln(
+          '$indentStr  defaultValue: ${_generateDefaultValue(field.defaultValue!)},');
+    }
+
+    if (field.assertClause != null) {
+      buffer.writeln(
+          "$indentStr  assertClause: r'${field.assertClause}',");
+    }
+
+    if (field.indexed) {
+      buffer.writeln('$indentStr  indexed: true,');
+    }
+
+    buffer.writeln('$indentStr),');
 
     return buffer.toString();
   }
@@ -315,7 +509,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   /// Generates ObjectType expression.
   String _generateObjectType(DartObject typeObj) {
     // For now, we generate schemaless ObjectType
-    // Schema support will be added in Phase 2 (nested objects)
+    // Schema support is handled via nested schema extraction
     return 'ObjectType()';
   }
 
@@ -383,20 +577,24 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 /// Internal class to store field information during generation.
 class _FieldInfo {
   final String name;
-  final DartObject type;
+  final DartObject? type;
   final bool isOptional;
   final DartObject? defaultValue;
   final String? assertClause;
   final bool indexed;
   final int? dimensions;
+  final Map<String, _FieldInfo>? nestedSchema;
+  final String? inferredTypeExpr;
 
   const _FieldInfo({
     required this.name,
-    required this.type,
+    this.type,
     required this.isOptional,
     this.defaultValue,
     this.assertClause,
     required this.indexed,
     this.dimensions,
+    this.nestedSchema,
+    this.inferredTypeExpr,
   });
 }

@@ -533,9 +533,11 @@ class AnyType extends SurrealType {
 /// Defines a field in a table schema.
 ///
 /// A field definition combines a [type] constraint with metadata about
-/// whether the field is [optional] and what [defaultValue] to use if not provided.
+/// whether the field is [optional], what [defaultValue] to use if not provided,
+/// and optional schema constraints like [assertClause] and [indexed].
 ///
-/// Example:
+/// ## Basic Field Example
+///
 /// ```dart
 /// // Required string field
 /// final nameField = FieldDefinition(StringType());
@@ -546,11 +548,32 @@ class AnyType extends SurrealType {
 ///   optional: true,
 ///   defaultValue: 0,
 /// );
+/// ```
 ///
-/// // Required vector field with normalization
+/// ## Field with Constraints
+///
+/// ```dart
+/// // Field with ASSERT clause
+/// final emailField = FieldDefinition(
+///   StringType(),
+///   assertClause: r'string::is::email($value)',
+/// );
+///
+/// // Indexed field for fast lookups
+/// final usernameField = FieldDefinition(
+///   StringType(),
+///   indexed: true,
+/// );
+/// ```
+///
+/// ## Vector Field with Constraints
+///
+/// ```dart
+/// // Required vector field with normalization constraint
 /// final embeddingField = FieldDefinition(
 ///   VectorType.f32(1536, normalized: true),
 ///   optional: false,
+///   assertClause: r'vector::magnitude($value) == 1.0',
 /// );
 /// ```
 class FieldDefinition {
@@ -559,14 +582,24 @@ class FieldDefinition {
   /// [type] - The SurrealDB type for this field
   /// [optional] - Whether this field can be omitted (defaults to false)
   /// [defaultValue] - Default value to use if field is not provided
+  /// [assertClause] - SurrealQL assertion expression for validation
+  /// [indexed] - Whether to create an index on this field
   ///
   /// When [optional] is false, the field must be present in data.
   /// When [optional] is true, the field can be omitted, and [defaultValue]
   /// is used if specified.
+  ///
+  /// The [assertClause] is a SurrealQL expression evaluated when data is
+  /// inserted or updated. Use `$value` to refer to the field's value.
+  ///
+  /// The [indexed] flag indicates whether to create a database index on
+  /// this field for improved query performance.
   const FieldDefinition(
     this.type, {
     this.optional = false,
     this.defaultValue,
+    this.assertClause,
+    this.indexed = false,
   });
 
   /// The SurrealDB type for this field.
@@ -583,4 +616,18 @@ class FieldDefinition {
   /// Only used when [optional] is true and the field is not present.
   /// Should match the type specified in [type].
   final dynamic defaultValue;
+
+  /// SurrealQL assertion expression for field validation.
+  ///
+  /// This expression is evaluated when data is inserted or updated in the
+  /// database. Use `$value` to refer to the field's value.
+  ///
+  /// Example: `r'$value >= 0 AND $value <= 100'`
+  final String? assertClause;
+
+  /// Whether to create an index on this field.
+  ///
+  /// When true, a database index will be created for this field,
+  /// improving query performance for lookups on this field.
+  final bool indexed;
 }

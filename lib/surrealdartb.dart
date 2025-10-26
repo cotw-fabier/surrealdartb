@@ -103,7 +103,10 @@ export 'src/exceptions.dart'
         ParameterException,
         ExportException,
         ImportException,
-        ValidationException;
+        ValidationException,
+        SchemaIntrospectionException,
+        MigrationException,
+        MigrationReport;
 export 'src/response.dart' show Response;
 export 'src/storage_backend.dart' show StorageBackend, StorageBackendExt;
 export 'src/types/types.dart'
@@ -142,6 +145,13 @@ export 'src/schema/schema.dart'
         AnyType,
         FieldDefinition,
         TableStructure;
+export 'src/schema/introspection.dart'
+    show DatabaseSchema, TableSchema, FieldSchema, IndexSchema;
+export 'src/schema/diff_engine.dart' show SchemaDiff, FieldModification;
+export 'src/schema/ddl_generator.dart' show DdlGenerator;
+export 'src/schema/migration_engine.dart' show MigrationEngine;
+export 'src/schema/migration_history.dart'
+    show MigrationHistory, MigrationRecord;
 
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)

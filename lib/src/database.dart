@@ -166,6 +166,7 @@ import 'schema/table_structure.dart';
 import 'storage_backend.dart';
 import 'types/credentials.dart';
 import 'types/jwt.dart';
+import 'schema/migration_engine.dart';
 
 /// High-level asynchronous database client for SurrealDB.
 ///
@@ -209,7 +210,7 @@ class Database {
   ///
   /// This constructor is private. Use [Database.connect] to create
   /// a database instance.
-  Database._(this._handle);
+  Database._(this._handle, this._tableDefinitions);
 
   /// The native database handle.
   Pointer<NativeDatabase> _handle;
@@ -217,47 +218,98 @@ class Database {
   /// Whether the database connection has been closed.
   bool _closed = false;
 
-  /// Connects to a SurrealDB database.
+  /// Table definitions for schema migration.
+  final List<TableStructure>? _tableDefinitions;
+
+  /// Connects to a SurrealDB database with optional auto-migration support.
   ///
   /// This factory method creates a new database instance and establishes
   /// a connection to the specified backend. All operations are performed
   /// asynchronously through direct FFI calls wrapped in Futures.
+  ///
+  /// ## Migration Support
+  ///
+  /// This method supports automatic schema migration when table definitions
+  /// are provided. Migrations can be applied automatically on connection or
+  /// deferred for manual control.
   ///
   /// Parameters:
   /// - [backend] - The storage backend to use (memory or rocksdb)
   /// - [path] - File path for rocksdb backend (required for rocksdb, ignored for memory)
   /// - [namespace] - Optional namespace to use after connection
   /// - [database] - Optional database to use after connection
+  /// - [tableDefinitions] - Optional list of table schemas for migration
+  /// - [autoMigrate] - Whether to automatically apply migrations on connect (default: true)
+  /// - [allowDestructiveMigrations] - Whether to allow destructive schema changes (default: false)
+  /// - [dryRun] - Whether to preview migrations without applying (default: false)
   ///
   /// Returns a connected Database instance.
   ///
   /// Throws:
   /// - [ArgumentError] if path is null for rocksdb backend
   /// - [ConnectionException] if connection fails
+  /// - [MigrationException] if migration fails (when autoMigrate=true)
   /// - [DatabaseException] for other errors
   ///
-  /// Example:
+  /// Example without migrations:
   /// ```dart
-  /// // In-memory database
-  /// final memDb = await Database.connect(
+  /// // Simple connection without migrations
+  /// final db = await Database.connect(
   ///   backend: StorageBackend.memory,
   ///   namespace: 'test',
   ///   database: 'test',
   /// );
+  /// ```
   ///
-  /// // Persistent database
-  /// final fileDb = await Database.connect(
+  /// Example with auto-migration:
+  /// ```dart
+  /// // Define table schemas
+  /// final tables = [
+  ///   TableStructure('users', {
+  ///     'name': FieldDefinition(StringType()),
+  ///     'email': FieldDefinition(StringType(), indexed: true),
+  ///   }),
+  /// ];
+  ///
+  /// // Connect with auto-migration
+  /// final db = await Database.connect(
+  ///   backend: StorageBackend.memory,
+  ///   namespace: 'test',
+  ///   database: 'test',
+  ///   tableDefinitions: tables,
+  ///   autoMigrate: true,
+  /// );
+  /// // Tables are automatically created/updated
+  /// ```
+  ///
+  /// Example with manual migration:
+  /// ```dart
+  /// // Connect without auto-migration
+  /// final db = await Database.connect(
   ///   backend: StorageBackend.rocksdb,
   ///   path: '/data/mydb',
   ///   namespace: 'prod',
   ///   database: 'main',
+  ///   tableDefinitions: tables,
+  ///   autoMigrate: false, // Don't migrate on connect
   /// );
+  ///
+  /// // Preview migration
+  /// final preview = await db.migrate(dryRun: true);
+  /// print('Would apply: ${preview.tablesAdded}');
+  ///
+  /// // Apply migration manually
+  /// await db.migrate();
   /// ```
   static Future<Database> connect({
     required StorageBackend backend,
     String? path,
     String? namespace,
     String? database,
+    List<TableStructure>? tableDefinitions,
+    bool autoMigrate = true,
+    bool allowDestructiveMigrations = false,
+    bool dryRun = false,
   }) async {
     // Validate parameters
     if (backend.requiresPath && (path == null || path.isEmpty)) {
@@ -268,7 +320,7 @@ class Database {
       );
     }
 
-    return Future(() {
+    return Future(() async {
       // Create endpoint string
       final endpoint = backend.toEndpoint(path);
       final endpointPtr = endpoint.toNativeUtf8();
@@ -278,7 +330,8 @@ class Database {
         final handle = dbNew(endpointPtr);
         if (handle == nullptr) {
           final error = _getLastErrorString();
-          throw ConnectionException(error ?? 'Failed to create database instance');
+          throw ConnectionException(
+              error ?? 'Failed to create database instance');
         }
 
         // Connect to database
@@ -319,8 +372,26 @@ class Database {
           }
         }
 
-        // Create and return database instance
-        final db = Database._(handle);
+        // Create database instance
+        final db = Database._(handle, tableDefinitions);
+
+        // Auto-migrate if requested and table definitions provided
+        if (autoMigrate && tableDefinitions != null && tableDefinitions.isNotEmpty) {
+          try {
+            final engine = MigrationEngine();
+            await engine.executeMigration(
+              db,
+              tableDefinitions,
+              allowDestructiveMigrations: allowDestructiveMigrations,
+              dryRun: dryRun,
+            );
+          } catch (e) {
+            // Close database on migration failure
+            await db.close();
+            rethrow;
+          }
+        }
+
         return db;
       } finally {
         malloc.free(endpointPtr);
@@ -578,7 +649,8 @@ class Database {
         if (firstResult is List) {
           final recordList = firstResult as List;
           if (recordList.isEmpty) {
-            throw QueryException('Create operation returned empty result array');
+            throw QueryException(
+                'Create operation returned empty result array');
           }
           return recordList.first as Map<String, dynamic>;
         }
@@ -679,7 +751,8 @@ class Database {
         if (firstResult is List) {
           final recordList = firstResult as List;
           if (recordList.isEmpty) {
-            throw QueryException('Update operation returned empty result array');
+            throw QueryException(
+                'Update operation returned empty result array');
           }
           return recordList.first as Map<String, dynamic>;
         }
@@ -990,7 +1063,6 @@ class Database {
     });
   }
 
-
   /// Sets a query parameter that can be used in subsequent queries.
   ///
   /// Parameters are stored per connection and can be referenced in queries
@@ -1110,9 +1182,7 @@ class Database {
 
     return Future(() {
       final functionPtr = function.toNativeUtf8();
-      final argsJson = args != null && args.isNotEmpty
-          ? jsonEncode(args)
-          : '';
+      final argsJson = args != null && args.isNotEmpty ? jsonEncode(args) : '';
       final argsPtr = argsJson.toNativeUtf8();
 
       try {
@@ -1247,6 +1317,140 @@ class Database {
     });
   }
 
+  /// Executes a manual schema migration.
+  ///
+  /// This method manually triggers a migration using the table definitions
+  /// provided during connection. It allows control over when migrations
+  /// are applied, as opposed to automatic migration on connect.
+  ///
+  /// ## Parameters
+  ///
+  /// [dryRun] - Whether to preview changes without applying (default: false)
+  /// [allowDestructiveMigrations] - Whether to allow destructive changes (default: false)
+  ///
+  /// Returns a [MigrationReportImpl] with details of the migration.
+  ///
+  /// Throws [StateError] if no table definitions were provided during connection.
+  /// Throws [MigrationException] if migration fails or destructive changes are blocked.
+  ///
+  /// ## Example: Preview Migration
+  ///
+  /// ```dart
+  /// final preview = await db.migrate(dryRun: true);
+  /// print('Would add tables: ${preview.tablesAdded}');
+  /// print('Would add fields: ${preview.fieldsAdded}');
+  /// print('Generated DDL: ${preview.generatedDDL}');
+  /// ```
+  ///
+  /// ## Example: Apply Migration
+  ///
+  /// ```dart
+  /// try {
+  ///   final report = await db.migrate();
+  ///   print('Migration succeeded');
+  ///   print('Tables added: ${report.tablesAdded}');
+  /// } catch (e) {
+  ///   if (e is MigrationException && e.isDestructive) {
+  ///     print('Destructive changes detected');
+  ///     print('Enable allowDestructiveMigrations to proceed');
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// ## Example: Allow Destructive Changes
+  ///
+  /// ```dart
+  /// final report = await db.migrate(
+  ///   allowDestructiveMigrations: true,
+  /// );
+  /// print('Migration completed with destructive changes');
+  /// print('Fields removed: ${report.fieldsRemoved}');
+  /// ```
+  Future<MigrationReportImpl> migrate({
+    bool dryRun = false,
+    bool allowDestructiveMigrations = false,
+  }) async {
+    _ensureNotClosed();
+
+    if (_tableDefinitions == null || _tableDefinitions!.isEmpty) {
+      throw StateError(
+        'Cannot migrate: No table definitions provided during Database.connect(). '
+        'To use migrations, provide tableDefinitions parameter when connecting.',
+      );
+    }
+
+    final engine = MigrationEngine();
+    return await engine.executeMigration(
+      this,
+      _tableDefinitions!,
+      allowDestructiveMigrations: allowDestructiveMigrations,
+      dryRun: dryRun,
+    );
+  }
+
+  /// Rolls back to the previous migration.
+  ///
+  /// This method retrieves the last two successful migrations from the migration
+  /// history, calculates the difference between the current schema and the
+  /// previous snapshot, generates reverse DDL, and executes the rollback within
+  /// a transaction.
+  ///
+  /// ## When to Use
+  ///
+  /// Use this method when you need to revert schema changes after a migration:
+  /// - A migration caused unexpected issues in production
+  /// - You need to temporarily revert to debug a problem
+  /// - A destructive migration needs to be undone
+  ///
+  /// ## Requirements
+  ///
+  /// - At least 2 successful migrations must exist in history
+  /// - The rollback may require `allowDestructiveMigrations: true` if it involves data loss
+  ///
+  /// ## Transaction Safety
+  ///
+  /// The rollback executes within a transaction. If any DDL statement fails,
+  /// the entire rollback is automatically reverted, leaving the schema unchanged.
+  ///
+  /// [allowDestructiveMigrations] - Whether to allow destructive changes during rollback (default: false)
+  /// [dryRun] - Whether to preview rollback without applying (default: false)
+  ///
+  /// Returns a [MigrationReportImpl] with details of the rollback operation.
+  ///
+  /// Throws [MigrationException] if:
+  /// - Fewer than 2 successful migrations exist
+  /// - Rollback would be destructive and allowDestructiveMigrations is false
+  /// - Rollback execution fails
+  ///
+  /// Example:
+  /// ```dart
+  /// // Preview rollback
+  /// final preview = await db.rollbackMigration(dryRun: true);
+  /// print('Rollback would: ${preview.summary}');
+  ///
+  /// // Execute rollback
+  /// final result = await db.rollbackMigration(
+  ///   allowDestructiveMigrations: true,
+  /// );
+  ///
+  /// if (result.success) {
+  ///   print('Rolled back successfully');
+  ///   print('Removed ${result.fieldsRemoved} fields');
+  /// }
+  /// ```
+  Future<MigrationReportImpl> rollbackMigration({
+    bool allowDestructiveMigrations = false,
+    bool dryRun = false,
+  }) async {
+    _ensureNotClosed();
+
+    final engine = MigrationEngine();
+    return await engine.rollbackMigration(
+      this,
+      allowDestructiveMigrations: allowDestructiveMigrations,
+      dryRun: dryRun,
+    );
+  }
 
   /// Closes the database connection and releases resources.
   ///
