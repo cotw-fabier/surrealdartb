@@ -13,10 +13,9 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
 import 'package:source_gen/source_gen.dart';
 import 'package:surrealdartb/src/schema/annotations.dart';
-import 'package:surrealdartb/src/schema/orm_annotations.dart';
-import 'package:surrealdartb/src/orm/relationship_metadata.dart';
 import 'relationship_detector.dart';
 import 'relationship_code_generator.dart';
+import 'package:surrealdartb/src/schema/orm_annotations.dart';
 
 /// Builder factory function for build_runner integration.
 ///
@@ -59,8 +58,6 @@ Builder surrealTableBuilder(BuilderOptions options) =>
 ///   static User fromSurrealMap(Map<String, dynamic> map) { ... }
 ///   void validate() { ... }
 ///   String get recordId => id;
-///   static String get tableName => 'users';
-///   static TableStructure get tableStructure => userTableDefinition;
 ///   static UserQueryBuilder createQueryBuilder(Database db) { ... }
 /// }
 ///
@@ -125,22 +122,13 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 
     buffer.writeln();
 
-    // Generate ORM extension methods (Task Group 4 & 5)
+    // Generate ORM extension methods (Task Group 4)
     buffer.write(_generateOrmExtension(
       classElement: element,
       className: className,
       tableName: tableName,
       fields: fields,
       idField: idField,
-      relationships: relationships,
-    ));
-
-    buffer.writeln();
-
-    // Generate Where Builder class (Task Group 9)
-    buffer.write(_generateWhereBuilder(
-      className: className,
-      fields: fields,
     ));
 
     buffer.writeln();
@@ -634,7 +622,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   }
 
   // ============================================================================
-  // ORM Extension Generation (Task Group 4 & 5)
+  // ORM Extension Generation (Task Group 4)
   // ============================================================================
 
   /// Finds the ID field in a class element.
@@ -671,8 +659,6 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   /// - fromSurrealMap(): Creates object from Map<String, dynamic>
   /// - validate(): Validates object against TableStructure
   /// - ID getter if ID field found
-  /// - tableName getter: Returns table name (Task Group 5)
-  /// - tableStructure getter: Returns TableStructure (Task Group 5)
   /// - createQueryBuilder(): Factory for query builder (Task Group 7)
   String _generateOrmExtension({
     required ClassElement classElement,
@@ -680,7 +666,6 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     required String tableName,
     required List<_FieldInfo> fields,
     required String? idField,
-    required Map<String, RelationshipMetadata> relationships,
   }) {
     final buffer = StringBuffer();
 
@@ -702,29 +687,12 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
       buffer.writeln();
     }
 
-    // Generate tableName static getter (Task Group 5)
-    buffer.write(_generateTableNameGetter(tableName));
-    buffer.writeln();
-
-    // Generate tableStructure static getter (Task Group 5)
-    buffer.write(_generateTableStructureGetter(className));
-    buffer.writeln();
-
     // Generate fromSurrealMap static method
     buffer.write(_generateFromSurrealMap(classElement, className, fields));
     buffer.writeln();
 
     // Generate createQueryBuilder static method (Task Group 7)
     buffer.write(_generateCreateQueryBuilder(className));
-
-    // Generate relationship registry (Task Group 11)
-    buffer.write(RelationshipCodeGenerator.generateRelationshipRegistry(
-      className,
-      relationships,
-    ));
-
-    // Generate auto-includes (Task Group 11)
-    buffer.write(RelationshipCodeGenerator.generateAutoIncludes(relationships));
 
     buffer.writeln('}');
 
@@ -895,33 +863,6 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     return buffer.toString();
   }
 
-  /// Generates tableName static getter (Task Group 5).
-  String _generateTableNameGetter(String tableName) {
-    final buffer = StringBuffer();
-
-    buffer.writeln('  /// Gets the table name for this entity.');
-    buffer.writeln('  ///');
-    buffer.writeln('  /// This is used by the ORM layer to determine which table');
-    buffer.writeln('  /// to perform operations on.');
-    buffer.writeln('  static String get tableName => \'$tableName\';');
-
-    return buffer.toString();
-  }
-
-  /// Generates tableStructure static getter (Task Group 5).
-  String _generateTableStructureGetter(String className) {
-    final buffer = StringBuffer();
-    final varName = '${_camelCase(className)}TableDefinition';
-
-    buffer.writeln('  /// Gets the TableStructure for this entity.');
-    buffer.writeln('  ///');
-    buffer.writeln('  /// This is used by the ORM layer for schema validation');
-    buffer.writeln('  /// and introspection.');
-    buffer.writeln('  static TableStructure get tableStructure => $varName;');
-
-    return buffer.toString();
-  }
-
   /// Generates createQueryBuilder() static method (Task Group 7).
   String _generateCreateQueryBuilder(String className) {
     final buffer = StringBuffer();
@@ -973,97 +914,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   }
 
   // ============================================================================
-  // Where Builder Generation (Task Group 9)
-  // ============================================================================
-
-  /// Generates a where builder class for the entity.
-  ///
-  /// The where builder provides type-safe field accessors that return
-  /// condition builders with operator methods.
-  String _generateWhereBuilder({
-    required String className,
-    required List<_FieldInfo> fields,
-  }) {
-    final buffer = StringBuffer();
-    final builderClassName = '${className}WhereBuilder';
-
-    buffer.writeln('// Where Builder for $className');
-    buffer.writeln('/// Type-safe where condition builder for $className entities.');
-    buffer.writeln('///');
-    buffer.writeln('/// This class provides field accessors that return condition builders');
-    buffer.writeln('/// with type-safe operator methods.');
-    buffer.writeln('///');
-    buffer.writeln('/// Example:');
-    buffer.writeln('/// ```dart');
-    buffer.writeln('/// final users = await db.query<$className>()');
-    buffer.writeln('///   .where((t) => t.fieldName.equals(value))');
-    buffer.writeln('///   .execute();');
-    buffer.writeln('/// ```');
-    buffer.writeln('class $builderClassName {');
-    buffer.writeln();
-
-    // Generate field accessor properties
-    for (final field in fields) {
-      buffer.write(_generateFieldAccessor(className, field));
-    }
-
-    buffer.writeln('}');
-
-    return buffer.toString();
-  }
-
-  /// Generates a field accessor property for the where builder.
-  String _generateFieldAccessor(String className, _FieldInfo field) {
-    final buffer = StringBuffer();
-    final fieldName = field.name;
-    final dartTypeName = _getDartTypeName(field.dartType);
-
-    // Determine the appropriate field condition type based on Dart type
-    String fieldConditionType;
-    if (dartTypeName == 'String') {
-      fieldConditionType = 'StringFieldCondition';
-    } else if (dartTypeName == 'int' || dartTypeName == 'double' || dartTypeName == 'num') {
-      fieldConditionType = 'NumberFieldCondition<$dartTypeName>';
-    } else if (dartTypeName == 'bool') {
-      fieldConditionType = 'BoolFieldCondition';
-    } else if (dartTypeName == 'DateTime') {
-      fieldConditionType = 'DateTimeFieldCondition';
-    } else if (field.nestedSchema != null) {
-      // For nested objects, generate a nested condition builder
-      return _generateNestedObjectAccessor(className, field);
-    } else {
-      // Default to StringFieldCondition for unknown types
-      fieldConditionType = 'StringFieldCondition';
-    }
-
-    buffer.writeln('  /// Condition builder for the $fieldName field.');
-    buffer.writeln('  $fieldConditionType get $fieldName => $fieldConditionType(\'$fieldName\');');
-    buffer.writeln();
-
-    return buffer.toString();
-  }
-
-  /// Generates a nested object accessor for complex field types.
-  String _generateNestedObjectAccessor(String className, _FieldInfo field) {
-    final buffer = StringBuffer();
-    final fieldName = field.name;
-    final nestedClassName = '${className}${_capitalize(fieldName)}Condition';
-
-    buffer.writeln('  /// Nested condition builder for the $fieldName field.');
-    buffer.writeln('  $nestedClassName get $fieldName => $nestedClassName(\'$fieldName\');');
-    buffer.writeln();
-
-    return buffer.toString();
-  }
-
-  /// Capitalizes the first letter of a string.
-  String _capitalize(String str) {
-    if (str.isEmpty) return str;
-    return str[0].toUpperCase() + str.substring(1);
-  }
-
-  // ============================================================================
-  // Query Builder Generation (Task Group 6 + Task Group 9)
+  // Query Builder Generation (Task Group 6)
   // ============================================================================
 
   /// Generates a query builder class for the entity.
@@ -1088,7 +939,6 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     buffer.writeln('/// Example:');
     buffer.writeln('/// ```dart');
     buffer.writeln('/// final results = await db.query<$className>()');
-    buffer.writeln('///   .where((t) => t.field.equals(value))');
     buffer.writeln('///   .limit(10)');
     buffer.writeln('///   .orderBy(\'name\', ascending: true)');
     buffer.writeln('///   .execute();');
@@ -1099,15 +949,10 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     buffer.writeln('  int? _offset;');
     buffer.writeln('  String? _orderByField;');
     buffer.writeln('  bool _orderByAscending = true;');
-    buffer.writeln('  WhereCondition? _whereCondition;');
-    buffer.writeln('  final Map<String, dynamic> _legacyWhereConditions = {};');
+    buffer.writeln('  final Map<String, dynamic> _whereConditions = {};');
     buffer.writeln();
     buffer.writeln('  /// Private constructor - use Database.query<$className>() instead.');
     buffer.writeln('  $builderClassName._(this._db);');
-    buffer.writeln();
-
-    // Generate where method with builder callback (Task Group 9)
-    buffer.write(_generateWhereMethod(builderClassName, className));
     buffer.writeln();
 
     // Generate limit method
@@ -1122,7 +967,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     buffer.write(_generateOrderByMethod(builderClassName));
     buffer.writeln();
 
-    // Generate legacy whereEquals methods for backward compatibility
+    // Generate whereEquals methods for each field
     for (final field in fields) {
       buffer.write(_generateWhereEqualsMethod(
         builderClassName: builderClassName,
@@ -1143,25 +988,6 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     buffer.write(_generateFirstMethod(className));
 
     buffer.writeln('}');
-
-    return buffer.toString();
-  }
-
-  /// Generates the where() method that accepts a where builder callback.
-  String _generateWhereMethod(String builderClassName, String className) {
-    final buffer = StringBuffer();
-
-    buffer.writeln('  /// Adds a where condition using the type-safe where builder.');
-    buffer.writeln('  ///');
-    buffer.writeln('  /// Example:');
-    buffer.writeln('  /// ```dart');
-    buffer.writeln('  /// .where((t) => t.age.greaterThan(18) & t.status.equals(\'active\'))');
-    buffer.writeln('  /// ```');
-    buffer.writeln('  $builderClassName where(WhereCondition Function(${className}WhereBuilder) builder) {');
-    buffer.writeln('    final whereBuilder = ${className}WhereBuilder();');
-    buffer.writeln('    _whereCondition = builder(whereBuilder);');
-    buffer.writeln('    return this;');
-    buffer.writeln('  }');
 
     return buffer.toString();
   }
@@ -1220,7 +1046,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     return buffer.toString();
   }
 
-  /// Generates a whereEquals method for a specific field (legacy support).
+  /// Generates a whereEquals method for a specific field.
   String _generateWhereEqualsMethod({
     required String builderClassName,
     required _FieldInfo field,
@@ -1230,11 +1056,11 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     final capitalizedName = fieldName[0].toUpperCase() + fieldName.substring(1);
     final dartTypeName = _getDartTypeName(field.dartType);
 
-    buffer.writeln('  /// Adds an equals condition for the $fieldName field (legacy method).');
+    buffer.writeln('  /// Adds an equals condition for the $fieldName field.');
     buffer.writeln('  ///');
-    buffer.writeln('  /// Consider using .where((t) => t.$fieldName.equals(value)) instead.');
+    buffer.writeln('  /// Only returns records where $fieldName equals the provided value.');
     buffer.writeln('  $builderClassName where${capitalizedName}Equals($dartTypeName value) {');
-    buffer.writeln('    _legacyWhereConditions[\'$fieldName\'] = value;');
+    buffer.writeln('    _whereConditions[\'$fieldName\'] = value;');
     buffer.writeln('    return this;');
     buffer.writeln('  }');
 
@@ -1259,25 +1085,15 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     buffer.writeln('    final buffer = StringBuffer(\'SELECT * FROM $tableName\');');
     buffer.writeln();
     buffer.writeln('    // Add WHERE clauses');
-    buffer.writeln('    final whereClauses = <String>[];');
-    buffer.writeln();
-    buffer.writeln('    // Add type-safe where condition');
-    buffer.writeln('    if (_whereCondition != null) {');
-    buffer.writeln('      whereClauses.add(_whereCondition!.toSurrealQL(_db));');
-    buffer.writeln('    }');
-    buffer.writeln();
-    buffer.writeln('    // Add legacy where conditions');
-    buffer.writeln('    if (_legacyWhereConditions.isNotEmpty) {');
-    buffer.writeln('      for (final entry in _legacyWhereConditions.entries) {');
+    buffer.writeln('    if (_whereConditions.isNotEmpty) {');
+    buffer.writeln('      buffer.write(\' WHERE \');');
+    buffer.writeln('      final conditions = <String>[];');
+    buffer.writeln('      for (final entry in _whereConditions.entries) {');
     buffer.writeln('        final paramName = \'param_\${entry.key}\';');
     buffer.writeln('        await _db.set(paramName, entry.value);');
-    buffer.writeln('        whereClauses.add(\'\${entry.key} = \\\$\$paramName\');');
+    buffer.writeln('        conditions.add(\'\${entry.key} = \\\$\$paramName\');');
     buffer.writeln('      }');
-    buffer.writeln('    }');
-    buffer.writeln();
-    buffer.writeln('    if (whereClauses.isNotEmpty) {');
-    buffer.writeln('      buffer.write(\' WHERE \');');
-    buffer.writeln('      buffer.write(whereClauses.join(\' AND \'));');
+    buffer.writeln('      buffer.write(conditions.join(\' AND \'));');
     buffer.writeln('    }');
     buffer.writeln();
     buffer.writeln('    // Add ORDER BY clause');

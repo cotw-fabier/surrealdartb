@@ -165,6 +165,7 @@ export 'src/schema/orm_annotations.dart'
         RelationDirection,
         SurrealEdge,
         SurrealId;
+
 // ORM core classes (Task Groups 8-9)
 export 'src/orm/where_condition.dart'
     show
@@ -174,6 +175,7 @@ export 'src/orm/where_condition.dart'
         OrCondition,
         // Equality and comparison
         EqualsCondition,
+        NotEqualsCondition,
         GreaterThanCondition,
         LessThanCondition,
         GreaterOrEqualCondition,
@@ -191,6 +193,22 @@ export 'src/orm/where_builder.dart'
         NumberFieldCondition,
         BoolFieldCondition,
         DateTimeFieldCondition;
+
+// ORM relationship support (Task Groups 11-13, 14-15)
+export 'src/orm/relationship_metadata.dart'
+    show
+        RelationshipMetadata,
+        RecordLinkMetadata,
+        GraphRelationMetadata,
+        EdgeTableMetadata;
+export 'src/orm/include_spec.dart' show IncludeSpec;
+export 'src/orm/relationship_loader.dart'
+    show
+        generateFetchClause,
+        generateGraphTraversal,
+        generateRelateStatement,
+        buildIncludeClauses,
+        determineAutoIncludes;
 
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)

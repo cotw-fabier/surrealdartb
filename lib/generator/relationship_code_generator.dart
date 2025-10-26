@@ -4,8 +4,8 @@
 /// that represents relationship metadata in generated files.
 library;
 
-import '../orm/relationship_metadata.dart';
-import '../schema/orm_annotations.dart';
+import 'package:surrealdartb/src/orm/relationship_metadata.dart';
+import 'package:surrealdartb/src/schema/orm_annotations.dart';
 
 /// Generates Dart code for relationship metadata.
 class RelationshipCodeGenerator {
