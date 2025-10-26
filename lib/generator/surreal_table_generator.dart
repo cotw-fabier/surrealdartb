@@ -2,7 +2,8 @@
 ///
 /// This generator processes @SurrealTable annotated classes and generates
 /// TableDefinition objects with field metadata for schema validation and
-/// migration support.
+/// migration support, as well as ORM extension methods for serialization
+/// and query builder classes for type-safe querying.
 library;
 
 import 'package:analyzer/dart/constant/value.dart';
@@ -12,6 +13,9 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
 import 'package:source_gen/source_gen.dart';
 import 'package:surrealdartb/src/schema/annotations.dart';
+import 'relationship_detector.dart';
+import 'relationship_code_generator.dart';
+import 'package:surrealdartb/src/schema/orm_annotations.dart';
 
 /// Builder factory function for build_runner integration.
 ///
@@ -24,7 +28,7 @@ Builder surrealTableBuilder(BuilderOptions options) =>
 ///
 /// This generator extends GeneratorForAnnotation to process classes annotated
 /// with @SurrealTable and generate corresponding .surreal.dart part files
-/// containing TableDefinition objects.
+/// containing TableDefinition objects, ORM extension methods, and query builders.
 ///
 /// ## Generated Output
 ///
@@ -32,6 +36,9 @@ Builder surrealTableBuilder(BuilderOptions options) =>
 /// ```dart
 /// @SurrealTable('users')
 /// class User {
+///   @SurrealField(type: StringType())
+///   final String id;
+///
 ///   @SurrealField(type: StringType())
 ///   final String name;
 /// }
@@ -42,8 +49,21 @@ Builder surrealTableBuilder(BuilderOptions options) =>
 /// part of 'user.dart';
 ///
 /// final userTableDefinition = TableStructure('users', {
+///   'id': FieldDefinition(StringType()),
 ///   'name': FieldDefinition(StringType()),
 /// });
+///
+/// extension UserORM on User {
+///   Map<String, dynamic> toSurrealMap() { ... }
+///   static User fromSurrealMap(Map<String, dynamic> map) { ... }
+///   void validate() { ... }
+///   String get recordId => id;
+///   static UserQueryBuilder createQueryBuilder(Database db) { ... }
+/// }
+///
+/// class UserQueryBuilder {
+///   // Query building methods...
+/// }
 /// ```
 class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   /// Track visited types to detect circular references.
@@ -88,13 +108,40 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 
     final className = element.name;
     final fields = _extractFields(element);
+    final idField = _findIdField(element);
+    final relationships = RelationshipDetector.extractRelationships(element);
+
+    final buffer = StringBuffer();
 
     // Generate the TableDefinition code
-    return _generateTableDefinition(
+    buffer.write(_generateTableDefinition(
       className: className,
       tableName: tableName,
       fields: fields,
-    );
+    ));
+
+    buffer.writeln();
+
+    // Generate ORM extension methods (Task Group 4)
+    buffer.write(_generateOrmExtension(
+      classElement: element,
+      className: className,
+      tableName: tableName,
+      fields: fields,
+      idField: idField,
+      relationships: relationships,
+    ));
+
+    buffer.writeln();
+
+    // Generate Query Builder class (Task Group 6)
+    buffer.write(_generateQueryBuilder(
+      className: className,
+      tableName: tableName,
+      fields: fields,
+    ));
+
+    return buffer.toString();
   }
 
   /// Validates that a table name follows SurrealDB naming conventions.
@@ -169,6 +216,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 
       fields.add(_FieldInfo(
         name: field.name,
+        dartType: field.type,
         type: typeObj,
         isOptional: isOptional,
         defaultValue: defaultValue.isNull ? null : defaultValue.objectValue,
@@ -259,6 +307,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 
         nestedFields[field.name] = _FieldInfo(
           name: field.name,
+          dartType: fieldType,
           type: null, // Type will be inferred
           isOptional: isOptional,
           defaultValue: null,
@@ -572,11 +621,540 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     // Fallback to null for unsupported types
     return 'null';
   }
+
+  // ============================================================================
+  // ORM Extension Generation (Task Group 4)
+  // ============================================================================
+
+  /// Finds the ID field in a class element.
+  ///
+  /// Algorithm:
+  /// 1. Look for @SurrealId annotation
+  /// 2. Look for field named 'id'
+  /// 3. Return null if no ID field found
+  String? _findIdField(ClassElement classElement) {
+    final idChecker = const TypeChecker.fromRuntime(SurrealId);
+
+    // 1. Look for @SurrealId annotation
+    for (final field in classElement.fields) {
+      if (idChecker.hasAnnotationOf(field)) {
+        return field.name;
+      }
+    }
+
+    // 2. Look for field named 'id'
+    for (final field in classElement.fields) {
+      if (field.name == 'id') {
+        return field.name;
+      }
+    }
+
+    // 3. No ID field found
+    return null;
+  }
+
+  /// Generates ORM extension methods on the entity class.
+  ///
+  /// Generates:
+  /// - toSurrealMap(): Converts object to Map<String, dynamic>
+  /// - fromSurrealMap(): Creates object from Map<String, dynamic>
+  /// - validate(): Validates object against TableStructure
+  /// - ID getter if ID field found
+  /// - createQueryBuilder(): Factory for query builder (Task Group 7)
+  String _generateOrmExtension({
+    required ClassElement classElement,
+    required String className,
+    required String tableName,
+    required List<_FieldInfo> fields,
+    required String? idField,
+    required Map<String, RelationshipMetadata> relationships,
+  }) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('// ORM Extension for $className');
+    buffer.writeln('extension ${className}ORM on $className {');
+    buffer.writeln();
+
+    // Generate toSurrealMap method
+    buffer.write(_generateToSurrealMap(className, fields));
+    buffer.writeln();
+
+    // Generate validate method
+    buffer.write(_generateValidateMethod(className));
+    buffer.writeln();
+
+    // Generate ID getter if ID field exists
+    if (idField != null) {
+      buffer.write(_generateIdGetter(idField, fields));
+      buffer.writeln();
+    }
+
+    // Generate fromSurrealMap static method
+    buffer.write(_generateFromSurrealMap(classElement, className, fields));
+    buffer.writeln();
+
+    // Generate createQueryBuilder static method (Task Group 7)
+    buffer.write(_generateCreateQueryBuilder(className));
+
+    // Generate relationship registry (Task Group 11)
+    buffer.write(RelationshipCodeGenerator.generateRelationshipRegistry(
+      className,
+      relationships,
+    ));
+
+    // Generate auto-includes (Task Group 11)
+    buffer.write(RelationshipCodeGenerator.generateAutoIncludes(relationships));
+
+    buffer.writeln('}');
+
+    return buffer.toString();
+  }
+
+  /// Generates toSurrealMap() method.
+  String _generateToSurrealMap(String className, List<_FieldInfo> fields) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Converts this $className instance to a SurrealDB-compatible Map.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// This method is used internally by the ORM layer to serialize');
+    buffer.writeln('  /// Dart objects before sending them to the database.');
+    buffer.writeln('  Map<String, dynamic> toSurrealMap() {');
+    buffer.writeln('    return {');
+
+    for (final field in fields) {
+      final fieldName = field.name;
+
+      // Handle different type conversions
+      if (_isDateTimeType(field)) {
+        buffer.writeln("      '$fieldName': $fieldName${field.isOptional ? '?' : ''}.toIso8601String(),");
+      } else if (_isDurationType(field)) {
+        buffer.writeln("      '$fieldName': $fieldName${field.isOptional ? '?' : ''}.inMicroseconds,");
+      } else {
+        // Simple field - direct assignment
+        buffer.writeln("      '$fieldName': $fieldName,");
+      }
+    }
+
+    buffer.writeln('    };');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates fromSurrealMap() static method.
+  String _generateFromSurrealMap(
+    ClassElement classElement,
+    String className,
+    List<_FieldInfo> fields,
+  ) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Creates a $className instance from a SurrealDB Map.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// This method is used internally by the ORM layer to deserialize');
+    buffer.writeln('  /// database results into Dart objects.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Throws [OrmSerializationException] if required fields are missing');
+    buffer.writeln('  /// or if type conversion fails.');
+    buffer.writeln('  static $className fromSurrealMap(Map<String, dynamic> map) {');
+
+    // Validate required fields are present
+    buffer.writeln('    // Validate required fields');
+    for (final field in fields) {
+      if (!field.isOptional) {
+        buffer.writeln("    if (!map.containsKey('${field.name}')) {");
+        buffer.writeln("      throw OrmSerializationException(");
+        buffer.writeln("        'Required field \"${field.name}\" is missing from map',");
+        buffer.writeln("        type: '$className',");
+        buffer.writeln("        field: '${field.name}',");
+        buffer.writeln('      );');
+        buffer.writeln('    }');
+      }
+    }
+
+    buffer.writeln();
+
+    // Try to deserialize
+    buffer.writeln('    try {');
+    buffer.writeln('      return $className(');
+
+    for (final field in fields) {
+      final fieldName = field.name;
+      final castType = _getDartTypeName(field.dartType);
+
+      if (_isDateTimeType(field)) {
+        // DateTime field
+        if (field.isOptional) {
+          buffer.writeln("        $fieldName: map['$fieldName'] != null ? DateTime.parse(map['$fieldName'] as String) : null,");
+        } else {
+          buffer.writeln("        $fieldName: DateTime.parse(map['$fieldName'] as String),");
+        }
+      } else if (_isDurationType(field)) {
+        // Duration field
+        if (field.isOptional) {
+          buffer.writeln("        $fieldName: map['$fieldName'] != null ? Duration(microseconds: map['$fieldName'] as int) : null,");
+        } else {
+          buffer.writeln("        $fieldName: Duration(microseconds: map['$fieldName'] as int),");
+        }
+      } else {
+        // Simple field
+        if (field.isOptional) {
+          buffer.writeln("        $fieldName: map['$fieldName'] as $castType?,");
+        } else {
+          buffer.writeln("        $fieldName: map['$fieldName'] as $castType,");
+        }
+      }
+    }
+
+    buffer.writeln('      );');
+    buffer.writeln('    } catch (e) {');
+    buffer.writeln('      throw OrmSerializationException(');
+    buffer.writeln("        'Failed to deserialize $className from map',");
+    buffer.writeln("        type: '$className',");
+    buffer.writeln('        cause: e is Exception ? e : Exception(e.toString()),');
+    buffer.writeln('      );');
+    buffer.writeln('    }');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates validate() method.
+  String _generateValidateMethod(String className) {
+    final buffer = StringBuffer();
+    final varName = '${_camelCase(className)}TableDefinition';
+
+    buffer.writeln('  /// Validates this $className instance against its table schema.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// This method checks that all field values conform to the defined');
+    buffer.writeln('  /// constraints in the TableStructure.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Throws [OrmValidationException] if validation fails.');
+    buffer.writeln('  void validate() {');
+    buffer.writeln('    try {');
+    buffer.writeln('      $varName.validate(toSurrealMap());');
+    buffer.writeln('    } on ValidationException catch (e) {');
+    buffer.writeln('      throw OrmValidationException(');
+    buffer.writeln("        'Validation failed for $className',");
+    buffer.writeln('        field: e.fieldName,');
+    buffer.writeln('        constraint: e.constraint,');
+    buffer.writeln('        cause: e,');
+    buffer.writeln('      );');
+    buffer.writeln('    }');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates ID getter method.
+  String _generateIdGetter(String idField, List<_FieldInfo> fields) {
+    final buffer = StringBuffer();
+
+    // Find the field info for the ID field to check if it's nullable
+    final idFieldInfo = fields.firstWhere(
+      (f) => f.name == idField,
+      orElse: () => _FieldInfo(
+        name: idField,
+        dartType: null,
+        type: null,
+        isOptional: false,
+        defaultValue: null,
+        assertClause: null,
+        indexed: false,
+        dimensions: null,
+        nestedSchema: null,
+      ),
+    );
+
+    final returnType = idFieldInfo.isOptional ? 'String?' : 'String';
+
+    buffer.writeln('  /// Gets the ID of this record.');
+    buffer.writeln('  $returnType get recordId => $idField;');
+
+    return buffer.toString();
+  }
+
+  /// Generates createQueryBuilder() static method (Task Group 7).
+  String _generateCreateQueryBuilder(String className) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Creates a query builder for $className.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// This method is used internally by Database.query<$className>()');
+    buffer.writeln('  /// to create type-safe query builders.');
+    buffer.writeln('  static ${className}QueryBuilder createQueryBuilder(Database db) {');
+    buffer.writeln('    return ${className}QueryBuilder._(db);');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Checks if a field is a DateTime type.
+  bool _isDateTimeType(_FieldInfo field) {
+    if (field.type != null) {
+      final typeName = field.type!.type?.element?.name;
+      return typeName == 'DatetimeType';
+    }
+    return field.dartType?.element?.name == 'DateTime';
+  }
+
+  /// Checks if a field is a Duration type.
+  bool _isDurationType(_FieldInfo field) {
+    if (field.type != null) {
+      final typeName = field.type!.type?.element?.name;
+      return typeName == 'DurationType';
+    }
+    return field.dartType?.element?.name == 'Duration';
+  }
+
+  /// Gets the Dart type name from a DartType.
+  String _getDartTypeName(DartType? dartType) {
+    if (dartType == null) return 'dynamic';
+
+    final typeName = dartType.element?.name ?? 'dynamic';
+
+    // Handle generic types
+    if (dartType is InterfaceType && dartType.typeArguments.isNotEmpty) {
+      final typeArgs = dartType.typeArguments
+          .map((t) => _getDartTypeName(t))
+          .join(', ');
+      return '$typeName<$typeArgs>';
+    }
+
+    return typeName;
+  }
+
+  // ============================================================================
+  // Query Builder Generation (Task Group 6)
+  // ============================================================================
+
+  /// Generates a query builder class for the entity.
+  ///
+  /// The query builder provides a fluent API for constructing type-safe
+  /// queries against the entity's table.
+  String _generateQueryBuilder({
+    required String className,
+    required String tableName,
+    required List<_FieldInfo> fields,
+  }) {
+    final buffer = StringBuffer();
+
+    final builderClassName = '${className}QueryBuilder';
+
+    buffer.writeln('// Query Builder for $className');
+    buffer.writeln('/// Type-safe query builder for $className entities.');
+    buffer.writeln('///');
+    buffer.writeln('/// This class provides a fluent API for building queries against');
+    buffer.writeln('/// the $tableName table with compile-time type safety.');
+    buffer.writeln('///');
+    buffer.writeln('/// Example:');
+    buffer.writeln('/// ```dart');
+    buffer.writeln('/// final results = await db.query<$className>()');
+    buffer.writeln('///   .limit(10)');
+    buffer.writeln('///   .orderBy(\'name\', ascending: true)');
+    buffer.writeln('///   .execute();');
+    buffer.writeln('/// ```');
+    buffer.writeln('class $builderClassName {');
+    buffer.writeln('  final Database _db;');
+    buffer.writeln('  int? _limit;');
+    buffer.writeln('  int? _offset;');
+    buffer.writeln('  String? _orderByField;');
+    buffer.writeln('  bool _orderByAscending = true;');
+    buffer.writeln('  final Map<String, dynamic> _whereConditions = {};');
+    buffer.writeln();
+    buffer.writeln('  /// Private constructor - use Database.query<$className>() instead.');
+    buffer.writeln('  $builderClassName._(this._db);');
+    buffer.writeln();
+
+    // Generate limit method
+    buffer.write(_generateLimitMethod(builderClassName));
+    buffer.writeln();
+
+    // Generate offset method
+    buffer.write(_generateOffsetMethod(builderClassName));
+    buffer.writeln();
+
+    // Generate orderBy method
+    buffer.write(_generateOrderByMethod(builderClassName));
+    buffer.writeln();
+
+    // Generate whereEquals methods for each field
+    for (final field in fields) {
+      buffer.write(_generateWhereEqualsMethod(
+        builderClassName: builderClassName,
+        field: field,
+      ));
+      buffer.writeln();
+    }
+
+    // Generate execute method
+    buffer.write(_generateExecuteMethod(
+      builderClassName: builderClassName,
+      className: className,
+      tableName: tableName,
+    ));
+    buffer.writeln();
+
+    // Generate first convenience method
+    buffer.write(_generateFirstMethod(className));
+
+    buffer.writeln('}');
+
+    return buffer.toString();
+  }
+
+  /// Generates the limit() method for the query builder.
+  String _generateLimitMethod(String builderClassName) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Sets the maximum number of results to return.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Throws [ArgumentError] if [count] is negative.');
+    buffer.writeln('  $builderClassName limit(int count) {');
+    buffer.writeln('    if (count < 0) {');
+    buffer.writeln('      throw ArgumentError.value(count, \'count\', \'Limit must be non-negative\');');
+    buffer.writeln('    }');
+    buffer.writeln('    _limit = count;');
+    buffer.writeln('    return this;');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates the offset() method for the query builder.
+  String _generateOffsetMethod(String builderClassName) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Sets the number of results to skip before returning.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Throws [ArgumentError] if [count] is negative.');
+    buffer.writeln('  $builderClassName offset(int count) {');
+    buffer.writeln('    if (count < 0) {');
+    buffer.writeln('      throw ArgumentError.value(count, \'count\', \'Offset must be non-negative\');');
+    buffer.writeln('    }');
+    buffer.writeln('    _offset = count;');
+    buffer.writeln('    return this;');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates the orderBy() method for the query builder.
+  String _generateOrderByMethod(String builderClassName) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Sets the field to order results by.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Parameters:');
+    buffer.writeln('  /// - [field]: The field name to sort by');
+    buffer.writeln('  /// - [ascending]: Sort direction (default: true)');
+    buffer.writeln('  $builderClassName orderBy(String field, {bool ascending = true}) {');
+    buffer.writeln('    _orderByField = field;');
+    buffer.writeln('    _orderByAscending = ascending;');
+    buffer.writeln('    return this;');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates a whereEquals method for a specific field.
+  String _generateWhereEqualsMethod({
+    required String builderClassName,
+    required _FieldInfo field,
+  }) {
+    final buffer = StringBuffer();
+    final fieldName = field.name;
+    final capitalizedName = fieldName[0].toUpperCase() + fieldName.substring(1);
+    final dartTypeName = _getDartTypeName(field.dartType);
+
+    buffer.writeln('  /// Adds an equals condition for the $fieldName field.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Only returns records where $fieldName equals the provided value.');
+    buffer.writeln('  $builderClassName where${capitalizedName}Equals($dartTypeName value) {');
+    buffer.writeln('    _whereConditions[\'$fieldName\'] = value;');
+    buffer.writeln('    return this;');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates the execute() method for the query builder.
+  String _generateExecuteMethod({
+    required String builderClassName,
+    required String className,
+    required String tableName,
+  }) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Executes the query and returns the results.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Returns a list of $className instances matching the query criteria.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// Throws [QueryException] if the query fails.');
+    buffer.writeln('  Future<List<$className>> execute() async {');
+    buffer.writeln('    // Build SELECT query');
+    buffer.writeln('    final buffer = StringBuffer(\'SELECT * FROM $tableName\');');
+    buffer.writeln();
+    buffer.writeln('    // Add WHERE clauses');
+    buffer.writeln('    if (_whereConditions.isNotEmpty) {');
+    buffer.writeln('      buffer.write(\' WHERE \');');
+    buffer.writeln('      final conditions = <String>[];');
+    buffer.writeln('      for (final entry in _whereConditions.entries) {');
+    buffer.writeln('        final paramName = \'param_\${entry.key}\';');
+    buffer.writeln('        await _db.set(paramName, entry.value);');
+    buffer.writeln('        conditions.add(\'\${entry.key} = \\\$\$paramName\');');
+    buffer.writeln('      }');
+    buffer.writeln('      buffer.write(conditions.join(\' AND \'));');
+    buffer.writeln('    }');
+    buffer.writeln();
+    buffer.writeln('    // Add ORDER BY clause');
+    buffer.writeln('    if (_orderByField != null) {');
+    buffer.writeln('      buffer.write(\' ORDER BY \$_orderByField\');');
+    buffer.writeln('      buffer.write(_orderByAscending ? \' ASC\' : \' DESC\');');
+    buffer.writeln('    }');
+    buffer.writeln();
+    buffer.writeln('    // Add LIMIT clause');
+    buffer.writeln('    if (_limit != null) {');
+    buffer.writeln('      buffer.write(\' LIMIT \$_limit\');');
+    buffer.writeln('    }');
+    buffer.writeln();
+    buffer.writeln('    // Add OFFSET/START clause');
+    buffer.writeln('    if (_offset != null) {');
+    buffer.writeln('      buffer.write(\' START \$_offset\');');
+    buffer.writeln('    }');
+    buffer.writeln();
+    buffer.writeln('    // Execute query');
+    buffer.writeln('    final response = await _db.queryQL(buffer.toString());');
+    buffer.writeln('    final results = response.getResults();');
+    buffer.writeln();
+    buffer.writeln('    // Deserialize results');
+    buffer.writeln('    return results.map((map) => ${className}ORM.fromSurrealMap(map)).toList();');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
+
+  /// Generates the first() convenience method for the query builder.
+  String _generateFirstMethod(String className) {
+    final buffer = StringBuffer();
+
+    buffer.writeln('  /// Executes the query and returns the first result, or null if no results.');
+    buffer.writeln('  ///');
+    buffer.writeln('  /// This is a convenience method equivalent to `.limit(1).execute()`');
+    buffer.writeln('  /// followed by returning the first element or null.');
+    buffer.writeln('  Future<$className?> first() async {');
+    buffer.writeln('    final results = await limit(1).execute();');
+    buffer.writeln('    return results.isEmpty ? null : results.first;');
+    buffer.writeln('  }');
+
+    return buffer.toString();
+  }
 }
 
 /// Internal class to store field information during generation.
 class _FieldInfo {
   final String name;
+  final DartType? dartType;
   final DartObject? type;
   final bool isOptional;
   final DartObject? defaultValue;
@@ -588,6 +1166,7 @@ class _FieldInfo {
 
   const _FieldInfo({
     required this.name,
+    this.dartType,
     this.type,
     required this.isOptional,
     this.defaultValue,
