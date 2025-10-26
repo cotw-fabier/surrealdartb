@@ -106,7 +106,13 @@ export 'src/exceptions.dart'
         ValidationException,
         SchemaIntrospectionException,
         MigrationException,
-        MigrationReport;
+        MigrationReport,
+        // ORM exceptions (Task Group 3)
+        OrmException,
+        OrmValidationException,
+        OrmSerializationException,
+        OrmRelationshipException,
+        OrmQueryException;
 export 'src/response.dart' show Response;
 export 'src/storage_backend.dart' show StorageBackend, StorageBackendExt;
 export 'src/types/types.dart'
@@ -152,6 +158,39 @@ export 'src/schema/ddl_generator.dart' show DdlGenerator;
 export 'src/schema/migration_engine.dart' show MigrationEngine;
 export 'src/schema/migration_history.dart'
     show MigrationHistory, MigrationRecord;
+export 'src/schema/orm_annotations.dart'
+    show
+        SurrealRecord,
+        SurrealRelation,
+        RelationDirection,
+        SurrealEdge,
+        SurrealId;
+// ORM core classes (Task Groups 8-9)
+export 'src/orm/where_condition.dart'
+    show
+        WhereCondition,
+        // Logical operators
+        AndCondition,
+        OrCondition,
+        // Equality and comparison
+        EqualsCondition,
+        GreaterThanCondition,
+        LessThanCondition,
+        GreaterOrEqualCondition,
+        LessOrEqualCondition,
+        BetweenCondition,
+        // String conditions
+        ContainsCondition,
+        IlikeCondition,
+        StartsWithCondition,
+        EndsWithCondition,
+        InListCondition;
+export 'src/orm/where_builder.dart'
+    show
+        StringFieldCondition,
+        NumberFieldCondition,
+        BoolFieldCondition,
+        DateTimeFieldCondition;
 
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)
