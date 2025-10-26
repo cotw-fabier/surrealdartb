@@ -582,7 +582,7 @@ class MigrationEngine {
         // Execute each DDL statement sequentially
         for (final statement in ddlStatements) {
           try {
-            await txn.query(statement);
+            await txn.queryQL(statement);
           } catch (e) {
             throw MigrationException(
               'Failed to execute DDL statement: $statement\nError: $e',

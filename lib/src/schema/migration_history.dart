@@ -68,7 +68,7 @@ class MigrationHistory {
     try {
       // Check if table exists
       try {
-        await db.query('INFO FOR TABLE _migrations');
+        await db.queryQL('INFO FOR TABLE _migrations');
         // Table exists, no need to create
         return;
       } catch (e) {
@@ -76,33 +76,33 @@ class MigrationHistory {
       }
 
       // Create the _migrations table
-      await db.query('DEFINE TABLE _migrations SCHEMAFULL');
+      await db.queryQL('DEFINE TABLE _migrations SCHEMAFULL');
 
       // Define fields
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD migration_id ON _migrations TYPE string',
       );
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD applied_at ON _migrations TYPE datetime',
       );
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD status ON _migrations TYPE string',
       );
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD schema_snapshot ON _migrations TYPE object',
       );
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD changes_applied ON _migrations TYPE array',
       );
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD error_message ON _migrations TYPE option<string>',
       );
-      await db.query(
+      await db.queryQL(
         'DEFINE FIELD ddl_statements ON _migrations TYPE array',
       );
 
       // Create index on migration_id for faster lookups
-      await db.query(
+      await db.queryQL(
         'DEFINE INDEX idx_migration_id ON _migrations FIELDS migration_id',
       );
     } catch (e) {
@@ -143,7 +143,7 @@ class MigrationHistory {
     required List<String> ddlStatements,
   }) async {
     try {
-      await db.create('_migrations', {
+      await db.createQL('_migrations', {
         'migration_id': migrationId,
         'applied_at': DateTime.now().toIso8601String(),
         'status': 'success',
@@ -189,7 +189,7 @@ class MigrationHistory {
     required List<String> ddlStatements,
   }) async {
     try {
-      await db.create('_migrations', {
+      await db.createQL('_migrations', {
         'migration_id': migrationId,
         'applied_at': DateTime.now().toIso8601String(),
         'status': 'failed',
@@ -225,7 +225,7 @@ class MigrationHistory {
   /// ```
   Future<MigrationRecord?> getLastSuccessfulMigration(Database db) async {
     try {
-      final response = await db.query('''
+      final response = await db.queryQL('''
         SELECT * FROM _migrations
         WHERE status = 'success'
         ORDER BY applied_at DESC
@@ -268,7 +268,7 @@ class MigrationHistory {
     int limit = 100,
   }) async {
     try {
-      final response = await db.query('''
+      final response = await db.queryQL('''
         SELECT * FROM _migrations
         ORDER BY applied_at DESC
         LIMIT $limit
@@ -313,7 +313,7 @@ class MigrationHistory {
     try {
       await db.set('migration_id', migrationId);
 
-      final response = await db.query('''
+      final response = await db.queryQL('''
         SELECT * FROM _migrations
         WHERE migration_id = \$migration_id AND status = 'success'
         LIMIT 1

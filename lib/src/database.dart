@@ -8,8 +8,8 @@
 /// This SDK implements a dual validation strategy for data integrity:
 ///
 /// **Dart-Side Validation (Optional)**:
-/// When a [TableStructure] schema is provided to CRUD operations ([create],
-/// [update]), the data is validated in Dart before being sent to SurrealDB.
+/// When a [TableStructure] schema is provided to CRUD operations ([createQL],
+/// [updateQL]), the data is validated in Dart before being sent to SurrealDB.
 /// This provides:
 /// - Immediate feedback on validation errors
 /// - Field-level error details via [ValidationException]
@@ -50,7 +50,7 @@
 ///
 /// try {
 ///   // Validate before insert
-///   final doc = await db.create(
+///   final doc = await db.createQL(
 ///     'documents',
 ///     {
 ///       'title': 'AI Document',
@@ -71,7 +71,7 @@
 /// ```dart
 /// // No schema provided - data passes directly to SurrealDB
 /// try {
-///   final doc = await db.create('documents', {
+///   final doc = await db.createQL('documents', {
 ///     'title': 'Simple Document',
 ///     'content': 'Content here',
 ///   });
@@ -94,8 +94,8 @@
 /// // Create vector embedding
 /// final embedding = VectorValue.fromList([0.1, 0.2, 0.3, 0.4]);
 ///
-/// // Store via create()
-/// final record = await db.create('embeddings', {
+/// // Store via createQL()
+/// final record = await db.createQL('embeddings', {
 ///   'text': 'Hello world',
 ///   'vector': embedding.toJson(), // Serializes to JSON List
 /// });
@@ -125,12 +125,12 @@
 ///   VectorValue.fromList([0.0, 0.0, 1.0]),
 /// ];
 ///
-/// // Batch insert via query()
+/// // Batch insert via queryQL()
 /// await db.set('vec1', vectors[0].toJson());
 /// await db.set('vec2', vectors[1].toJson());
 /// await db.set('vec3', vectors[2].toJson());
 ///
-/// await db.query('''
+/// await db.queryQL('''
 ///   INSERT INTO embeddings [
 ///     { name: "x", vec: \$vec1 },
 ///     { name: "y", vec: \$vec2 },
@@ -145,7 +145,7 @@
 /// // Update existing vector
 /// final newEmbedding = VectorValue.fromList([0.5, 0.6, 0.7, 0.8]);
 ///
-/// await db.update('embeddings:abc', {
+/// await db.updateQL('embeddings:abc', {
 ///   'vector': newEmbedding.toJson(),
 ///   'updated_at': DateTime.now().toIso8601String(),
 /// });
@@ -167,6 +167,8 @@ import 'storage_backend.dart';
 import 'types/credentials.dart';
 import 'types/jwt.dart';
 import 'schema/migration_engine.dart';
+import 'orm/where_condition.dart';
+import 'orm/include_spec.dart';
 
 /// High-level asynchronous database client for SurrealDB.
 ///
@@ -187,14 +189,14 @@ import 'schema/migration_engine.dart';
 /// );
 ///
 /// try {
-///   // Create a record
-///   final person = await db.create('person', {
+///   // Create a record using QL method (map-based)
+///   final person = await db.createQL('person', {
 ///     'name': 'John Doe',
 ///     'age': 30,
 ///   });
 ///
 ///   // Query records
-///   final response = await db.query('SELECT * FROM person');
+///   final response = await db.queryQL('SELECT * FROM person');
 ///   final results = response.getResults();
 ///
 ///   for (final record in results) {
@@ -220,6 +222,20 @@ class Database {
 
   /// Table definitions for schema migration.
   final List<TableStructure>? _tableDefinitions;
+
+  /// Counter for generating unique parameter names.
+  int _paramCounter = 0;
+
+  /// Generates a unique parameter name for query binding.
+  ///
+  /// This method creates unique parameter names for use in WhereCondition
+  /// classes to prevent parameter name collisions.
+  ///
+  /// Returns a unique parameter name in the format "param_N" where N is
+  /// an incrementing counter.
+  String generateParamName() {
+    return 'param_${_paramCounter++}';
+  }
 
   /// Connects to a SurrealDB database with optional auto-migration support.
   ///
@@ -465,11 +481,16 @@ class Database {
     });
   }
 
-  /// Executes a SurrealQL query.
+  /// Executes a SurrealQL query (QL-suffix version for backward compatibility).
   ///
   /// This method executes the provided SQL query and returns a Response
   /// containing the results. The query can contain multiple statements
   /// separated by semicolons.
+  ///
+  /// **Note**: This is the renamed version of the original `query()` method.
+  /// The QL suffix indicates this method uses raw SurrealQL with Map-based
+  /// parameters. In the future, a new type-safe `query()` method will be
+  /// introduced for the ORM layer.
   ///
   /// Parameters:
   /// - [sql] - The SurrealQL query to execute
@@ -484,7 +505,7 @@ class Database {
   ///
   /// Example:
   /// ```dart
-  /// final response = await db.query('''
+  /// final response = await db.queryQL('''
   ///   SELECT * FROM person WHERE age > 18
   /// ''');
   ///
@@ -492,7 +513,7 @@ class Database {
   ///   print('${person['name']}: ${person['age']}');
   /// }
   /// ```
-  Future<Response> query(String sql, [Map<String, dynamic>? bindings]) async {
+  Future<Response> queryQL(String sql, [Map<String, dynamic>? bindings]) async {
     _ensureNotClosed();
 
     return Future(() {
@@ -506,10 +527,15 @@ class Database {
     });
   }
 
-  /// Selects all records from a table.
+  /// Selects all records from a table (QL-suffix version for backward compatibility).
   ///
   /// This is a convenience method that queries all records from the
   /// specified table and returns them as a list.
+  ///
+  /// **Note**: This is the renamed version of the original `select()` method.
+  /// The QL suffix indicates this method uses raw SurrealQL with Map-based
+  /// results. In the future, a new type-safe `select()` method will be
+  /// introduced for the ORM layer.
   ///
   /// Parameters:
   /// - [table] - The table name to select from
@@ -523,12 +549,12 @@ class Database {
   ///
   /// Example:
   /// ```dart
-  /// final persons = await db.select('person');
+  /// final persons = await db.selectQL('person');
   /// for (final person in persons) {
   ///   print(person['name']);
   /// }
   /// ```
-  Future<List<Map<String, dynamic>>> select(String table) async {
+  Future<List<Map<String, dynamic>>> selectQL(String table) async {
     _ensureNotClosed();
 
     return Future(() {
@@ -557,11 +583,16 @@ class Database {
     });
   }
 
-  /// Creates a new record in a table with optional schema validation.
+  /// Creates a new record in a table with optional schema validation (QL-suffix version).
   ///
   /// This method creates a new record with the specified data in the
   /// given table. SurrealDB will automatically generate an ID if not
   /// provided in the data.
+  ///
+  /// **Note**: This is the renamed version of the original `create()` method.
+  /// The QL suffix indicates this method uses Map-based data. In the future,
+  /// a new type-safe `create()` method will be introduced for the ORM layer
+  /// that accepts Dart objects instead of Maps.
   ///
   /// **Dual Validation Strategy**:
   ///
@@ -594,7 +625,7 @@ class Database {
   /// });
   ///
   /// // Create with validation
-  /// final person = await db.create(
+  /// final person = await db.createQL(
   ///   'person',
   ///   {
   ///     'name': 'Alice',
@@ -611,12 +642,12 @@ class Database {
   /// ```dart
   /// final embedding = VectorValue.fromList(List.filled(384, 0.1));
   ///
-  /// final doc = await db.create('documents', {
+  /// final doc = await db.createQL('documents', {
   ///   'title': 'AI Document',
   ///   'embedding': embedding.toJson(),
   /// });
   /// ```
-  Future<Map<String, dynamic>> create(
+  Future<Map<String, dynamic>> createQL(
     String table,
     Map<String, dynamic> data, {
     TableStructure? schema,
@@ -664,10 +695,15 @@ class Database {
     });
   }
 
-  /// Updates an existing record with optional schema validation.
+  /// Updates an existing record with optional schema validation (QL-suffix version).
   ///
   /// This method updates the record identified by [resource] with the
   /// provided data. The resource should be in the format "table:id".
+  ///
+  /// **Note**: This is the renamed version of the original `update()` method.
+  /// The QL suffix indicates this method uses Map-based data. In the future,
+  /// a new type-safe `update()` method will be introduced for the ORM layer
+  /// that accepts Dart objects instead of Maps.
   ///
   /// **Dual Validation Strategy**:
   ///
@@ -698,7 +734,7 @@ class Database {
   ///   'email': FieldDefinition(StringType(), optional: true),
   /// });
   ///
-  /// final updated = await db.update(
+  /// final updated = await db.updateQL(
   ///   'person:john',
   ///   {
   ///     'age': 31,
@@ -714,11 +750,11 @@ class Database {
   /// ```dart
   /// final newEmbedding = VectorValue.fromList([0.5, 0.6, 0.7]);
   ///
-  /// await db.update('embeddings:abc', {
+  /// await db.updateQL('embeddings:abc', {
   ///   'vector': newEmbedding.toJson(),
   /// });
   /// ```
-  Future<Map<String, dynamic>> update(
+  Future<Map<String, dynamic>> updateQL(
     String resource,
     Map<String, dynamic> data, {
     TableStructure? schema,
@@ -766,10 +802,15 @@ class Database {
     });
   }
 
-  /// Deletes a record.
+  /// Deletes a record (QL-suffix version for backward compatibility).
   ///
   /// This method deletes the record identified by [resource].
   /// The resource should be in the format "table:id".
+  ///
+  /// **Note**: This is the renamed version of the original `delete()` method.
+  /// The QL suffix indicates this method uses raw record identifiers. In the
+  /// future, a new type-safe `delete()` method will be introduced for the
+  /// ORM layer that accepts Dart objects.
   ///
   /// Parameters:
   /// - [resource] - The record identifier (e.g., "person:john")
@@ -781,10 +822,10 @@ class Database {
   ///
   /// Example:
   /// ```dart
-  /// await db.delete('person:john');
+  /// await db.deleteQL('person:john');
   /// print('Deleted person:john');
   /// ```
-  Future<void> delete(String resource) async {
+  Future<void> deleteQL(String resource) async {
     _ensureNotClosed();
 
     return Future(() {
@@ -1084,7 +1125,7 @@ class Database {
   /// await db.set('min_age', 18);
   ///
   /// // Use parameters in queries
-  /// final response = await db.query(
+  /// final response = await db.queryQL(
   ///   'SELECT * FROM person WHERE id = $user_id AND age >= $min_age'
   /// );
   /// ```
@@ -1241,6 +1282,132 @@ class Database {
     });
   }
 
+
+  /// Type-safe query builder for ORM operations (direct parameter API).
+  ///
+  /// This method provides a direct parameter API for building type-safe queries.
+  /// It accepts all query parameters as named arguments and executes the query
+  /// immediately, returning results as a list of Maps.
+  ///
+  /// **Note**: This is a placeholder implementation for Task Group 16.
+  /// Full type-safe query building with code generation will be implemented
+  /// in later task groups (6-15). For now, this method provides the API
+  /// interface and basic query execution.
+  ///
+  /// Parameters:
+  /// - [table] - The table name to query from (required)
+  /// - [where] - Optional where clause using WhereCondition
+  /// - [include] - Optional list of relationships to include
+  /// - [orderBy] - Optional field name to sort by
+  /// - [ascending] - Sort direction (default: true)
+  /// - [limit] - Optional maximum number of records
+  /// - [offset] - Optional number of records to skip
+  ///
+  /// Returns a Future<List<Map<String, dynamic>>> with query results.
+  ///
+  /// Throws:
+  /// - [StateError] if database is closed
+  /// - [ArgumentError] if table name is empty
+  /// - [OrmQueryException] if query building fails
+  /// - [QueryException] if query execution fails
+  ///
+  /// Example:
+  /// ```dart
+  /// // Simple query
+  /// final users = await db.query(
+  ///   table: 'users',
+  ///   limit: 10,
+  /// );
+  ///
+  /// // Query with where clause
+  /// final activeUsers = await db.query(
+  ///   table: 'users',
+  ///   where: EqualsCondition('status', 'active'),
+  ///   orderBy: 'name',
+  /// );
+  ///
+  /// // Query with complex where and includes
+  /// final usersWithPosts = await db.query(
+  ///   table: 'users',
+  ///   where: EqualsCondition('age', 25) & GreaterThanCondition('posts_count', 0),
+  ///   include: [
+  ///     IncludeSpec('posts', limit: 5),
+  ///   ],
+  ///   limit: 10,
+  /// );
+  /// ```
+  Future<List<Map<String, dynamic>>> query({
+    required String table,
+    WhereCondition? where,
+    List<IncludeSpec>? include,
+    String? orderBy,
+    bool ascending = true,
+    int? limit,
+    int? offset,
+  }) async {
+    _ensureNotClosed();
+
+    if (table.isEmpty) {
+      throw ArgumentError.value(table, 'table', 'Table name cannot be empty');
+    }
+
+    return Future(() {
+      // Build the SurrealQL query
+      final queryBuffer = StringBuffer('SELECT * FROM $table');
+
+      // Add WHERE clause if provided
+      if (where != null) {
+        final whereClause = where.toSurrealQL(this);
+        queryBuffer.write(' WHERE $whereClause');
+      }
+
+      // Add ORDER BY clause if provided
+      if (orderBy != null && orderBy.isNotEmpty) {
+        queryBuffer.write(' ORDER BY $orderBy ${ascending ? 'ASC' : 'DESC'}');
+      }
+
+      // Add LIMIT clause if provided
+      if (limit != null && limit > 0) {
+        queryBuffer.write(' LIMIT $limit');
+      }
+
+      // Add OFFSET (START in SurrealQL) if provided
+      if (offset != null && offset > 0) {
+        queryBuffer.write(' START $offset');
+      }
+
+      // TODO: Add include/FETCH support in future task groups
+      // For now, includes are ignored with a note
+      if (include != null && include.isNotEmpty) {
+        // Placeholder: In full implementation, this will add FETCH clauses
+        // for each IncludeSpec with proper filtering, limiting, and sorting
+      }
+
+      final sqlQuery = queryBuffer.toString();
+
+      // Execute the query using existing queryQL infrastructure
+      final sqlPtr = sqlQuery.toNativeUtf8();
+      try {
+        final responsePtr = dbQuery(_handle, sqlPtr);
+        final data = _processResponse(responsePtr);
+
+        // Process results similar to selectQL
+        if (data is List && data.isNotEmpty) {
+          final firstElement = data.first;
+          if (firstElement is List) {
+            return firstElement.cast<Map<String, dynamic>>();
+          }
+          return data.cast<Map<String, dynamic>>();
+        }
+
+        return <Map<String, dynamic>>[];
+      } finally {
+        malloc.free(sqlPtr);
+      }
+    });
+  }
+
+
   /// Executes a transaction with automatic commit/rollback.
   ///
   /// This method provides transactional semantics by wrapping the callback
@@ -1264,9 +1431,9 @@ class Database {
   /// ```dart
   /// final result = await db.transaction((txn) async {
   ///   // Create account
-  ///   final account = await txn.create("account", {"balance": 100});
+  ///   final account = await txn.createQL("account", {"balance": 100});
   ///   // Create related transaction record
-  ///   await txn.create("transaction", {
+  ///   await txn.createQL("transaction", {
   ///     "account_id": account["id"],
   ///     "amount": 100,
   ///     "type": "deposit"
@@ -1452,6 +1619,10 @@ class Database {
     );
   }
 
+
+  // ============================================================================
+  // Type-Safe Query Builder Factory (Task Group 7)
+  // ============================================================================
   /// Closes the database connection and releases resources.
   ///
   /// After calling this method, the database instance cannot be used anymore.
@@ -1561,7 +1732,7 @@ class Database {
 
   /// Processes a query Response pointer and returns a Response object.
   ///
-  /// This is specifically for the query() method which returns a Response
+  /// This is specifically for the queryQL() method which returns a Response
   /// object rather than raw data.
   Response _processQueryResponse(Pointer<NativeResponse> responsePtr) {
     if (responsePtr == nullptr) {

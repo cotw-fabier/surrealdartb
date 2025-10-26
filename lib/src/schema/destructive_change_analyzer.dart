@@ -266,7 +266,7 @@ class DestructiveChangeAnalyzer {
   /// Returns 0 if the query fails or the table doesn't exist.
   Future<int> _estimateTableRecordCount(Database db, String tableName) async {
     try {
-      final response = await db.query('SELECT count() FROM $tableName GROUP ALL');
+      final response = await db.queryQL('SELECT count() FROM $tableName GROUP ALL');
       final results = response.getResults();
 
       if (results.isEmpty) {

@@ -57,7 +57,7 @@ class DatabaseSchema {
   static Future<DatabaseSchema> introspect(Database db) async {
     try {
       // Execute INFO FOR DB query
-      final response = await db.query('INFO FOR DB');
+      final response = await db.queryQL('INFO FOR DB');
       final results = response.getResults();
 
       if (results.isEmpty) {
@@ -220,7 +220,7 @@ class TableSchema {
   static Future<TableSchema> introspect(Database db, String tableName) async {
     try {
       // Execute INFO FOR TABLE query
-      final response = await db.query('INFO FOR TABLE $tableName');
+      final response = await db.queryQL('INFO FOR TABLE $tableName');
       final results = response.getResults();
 
       if (results.isEmpty) {
