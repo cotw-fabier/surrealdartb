@@ -45,7 +45,7 @@ void main() {
       expect(report.fieldsAdded['users'], containsAll(['name', 'age']));
 
       // Verify table was actually created
-      final response = await db.query('INFO FOR TABLE users');
+      final response = await db.queryQL('INFO FOR TABLE users');
       final results = response.getResults();
       expect(results, isNotEmpty);
 
@@ -65,7 +65,7 @@ void main() {
 
       // Manually inject a bad DDL statement to force failure
       // We'll do this by creating a table, then trying to create it again
-      await db.query('DEFINE TABLE products SCHEMAFULL');
+      await db.queryQL('DEFINE TABLE products SCHEMAFULL');
 
       // Now try to migrate with the same table (will fail on duplicate)
       try {
@@ -83,7 +83,7 @@ void main() {
       }
 
       // Verify rollback - check migration history
-      final historyResponse = await db.query(
+      final historyResponse = await db.queryQL(
         'SELECT * FROM _migrations WHERE status = "failed"',
       );
       final historyResults = historyResponse.getResults();
@@ -116,7 +116,7 @@ void main() {
 
       // Verify table was NOT actually created (transaction was cancelled)
       try {
-        await db.query('INFO FOR TABLE test_table');
+        await db.queryQL('INFO FOR TABLE test_table');
         fail('Table should not exist after dry run');
       } catch (e) {
         // Expected - table should not exist
@@ -142,7 +142,7 @@ void main() {
       // Verify migration history was recorded
       await db.set('id', report.migrationId);
 
-      final historyResponse = await db.query(
+      final historyResponse = await db.queryQL(
         'SELECT * FROM _migrations WHERE migration_id = \$id',
       );
 
@@ -249,7 +249,7 @@ void main() {
       expect(report.indexesAdded['indexed_table'], contains('email'));
 
       // Verify index was created
-      final response = await db.query('INFO FOR TABLE indexed_table');
+      final response = await db.queryQL('INFO FOR TABLE indexed_table');
       final results = response.getResults();
       final tableInfo = results.first as Map<String, dynamic>;
 

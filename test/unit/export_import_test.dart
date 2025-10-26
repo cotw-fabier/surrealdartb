@@ -45,8 +45,8 @@ void main() {
 
     test('export() creates file with database content', () async {
       // Create some test data
-      await db.create('person', {'name': 'Alice', 'age': 30});
-      await db.create('person', {'name': 'Bob', 'age': 25});
+      await db.createQL('person', {'name': 'Alice', 'age': 30});
+      await db.createQL('person', {'name': 'Bob', 'age': 25});
 
       final exportPath = '$testDir/export.surql';
 
@@ -66,28 +66,28 @@ void main() {
       final exportPath = '$testDir/export.surql';
 
       // Create and export initial data
-      await db.create('person', {'name': 'Alice', 'age': 30});
+      await db.createQL('person', {'name': 'Alice', 'age': 30});
       await db.export(exportPath);
 
       // Delete all records
-      await db.delete('person');
+      await db.deleteQL('person');
 
       // Verify deletion
-      final beforeImport = await db.select('person');
+      final beforeImport = await db.selectQL('person');
       expect(beforeImport.getResults(), isEmpty, reason: 'Records should be deleted');
 
       // Import the data back
       await db.import(exportPath);
 
       // Verify data was imported
-      final afterImport = await db.select('person');
+      final afterImport = await db.selectQL('person');
       final records = afterImport.getResults();
       expect(records.isNotEmpty, isTrue, reason: 'Records should be imported');
     });
 
     test('round-trip export/import preserves data', () async {
       // Create test data with various types
-      final originalPerson = await db.create('person', {
+      final originalPerson = await db.createQL('person', {
         'name': 'Charlie',
         'age': 35,
         'email': 'charlie@example.com',
@@ -100,13 +100,13 @@ void main() {
       await db.export(exportPath);
 
       // Delete the record
-      await db.delete('person');
+      await db.deleteQL('person');
 
       // Import it back
       await db.import(exportPath);
 
       // Verify data matches
-      final imported = await db.select('person');
+      final imported = await db.selectQL('person');
       final records = imported.getResults();
 
       expect(records, hasLength(1), reason: 'Should have one record after import');
@@ -165,9 +165,9 @@ void main() {
 
     test('round-trip with multiple tables', () async {
       // Create data in multiple tables
-      await db.create('person', {'name': 'Alice'});
-      await db.create('company', {'name': 'Acme Corp'});
-      await db.create('product', {'name': 'Widget', 'price': 9.99});
+      await db.createQL('person', {'name': 'Alice'});
+      await db.createQL('company', {'name': 'Acme Corp'});
+      await db.createQL('product', {'name': 'Widget', 'price': 9.99});
 
       final exportPath = '$testDir/multitable.surql';
 
@@ -175,21 +175,21 @@ void main() {
       await db.export(exportPath);
 
       // Delete all data
-      await db.delete('person');
-      await db.delete('company');
-      await db.delete('product');
+      await db.deleteQL('person');
+      await db.deleteQL('company');
+      await db.deleteQL('product');
 
       // Import
       await db.import(exportPath);
 
       // Verify all tables restored
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       expect(persons.getResults().isNotEmpty, isTrue, reason: 'Person table should have data');
 
-      final companies = await db.select('company');
+      final companies = await db.selectQL('company');
       expect(companies.getResults().isNotEmpty, isTrue, reason: 'Company table should have data');
 
-      final products = await db.select('product');
+      final products = await db.selectQL('product');
       expect(products.getResults().isNotEmpty, isTrue, reason: 'Product table should have data');
     });
   });

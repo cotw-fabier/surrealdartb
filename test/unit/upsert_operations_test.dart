@@ -30,7 +30,7 @@ void main() {
   group('Upsert Content', () {
     test('replaces entire record with upsertContent()', () async {
       // Create initial record
-      final created = await db.create('person', {
+      final created = await db.createQL('person', {
         'name': 'Alice',
         'age': 25,
         'email': 'alice@example.com',
@@ -68,7 +68,7 @@ void main() {
   group('Upsert Merge', () {
     test('merges fields with upsertMerge()', () async {
       // Create initial record
-      final created = await db.create('person', {
+      final created = await db.createQL('person', {
         'name': 'Charlie',
         'age': 28,
         'email': 'charlie@example.com',
@@ -105,7 +105,7 @@ void main() {
   group('Upsert Patch', () {
     test('applies PatchOp operations with upsertPatch()', () async {
       // Create initial record
-      final created = await db.create('person', {
+      final created = await db.createQL('person', {
         'name': 'Eve',
         'age': 22,
         'email': 'eve@example.com',
@@ -128,7 +128,7 @@ void main() {
     });
 
     test('throws error for invalid PatchOp path format', () async {
-      final created = await db.create('person', {
+      final created = await db.createQL('person', {
         'name': 'Frank',
         'age': 40,
       });

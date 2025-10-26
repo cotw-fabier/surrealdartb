@@ -30,7 +30,7 @@ void main() {
   group('Database.get()', () {
     test('returns record for existing resource', () async {
       // Create a record first
-      final created = await db.create('person', {
+      final created = await db.createQL('person', {
         'name': 'Alice',
         'age': 25,
         'email': 'alice@example.com',
@@ -60,7 +60,7 @@ void main() {
 
     test('deserializes to generic type correctly', () async {
       // Create a record
-      final created = await db.create('user', {
+      final created = await db.createQL('user', {
         'username': 'john_doe',
         'active': true,
         'score': 100,
@@ -85,7 +85,7 @@ void main() {
     });
 
     test('handles records with complex nested data', () async {
-      final created = await db.create('document', {
+      final created = await db.createQL('document', {
         'title': 'Test Doc',
         'metadata': {
           'author': 'Alice',

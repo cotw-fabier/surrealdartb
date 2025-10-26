@@ -27,7 +27,7 @@ void main() {
 
       try {
         // Create record with RecordId reference
-        final person = await db.create('person', {
+        final person = await db.createQL('person', {
           'name': 'Alice',
           'birthdate': Datetime(DateTime(1990, 1, 15)).toJson(),
           'subscription_duration': SurrealDuration(Duration(days: 365)).toJson(),
@@ -40,7 +40,7 @@ void main() {
         expect(recordId.table, equals('person'));
 
         // Query and verify type deserialization
-        final response = await db.query('SELECT * FROM person');
+        final response = await db.queryQL('SELECT * FROM person');
         final results = response.getResults();
         expect(results, isNotEmpty);
       } finally {
@@ -68,15 +68,15 @@ void main() {
         }
 
         // Verify parameter persists after auth attempt
-        final response = await db.query('RETURN \$table_name');
+        final response = await db.queryQL('RETURN \$table_name');
         final results = response.getResults();
         expect(results.first, equals('person'));
 
         // Set another parameter and use both together
         await db.set('min_age', 18);
-        await db.create('person', {'name': 'Bob', 'age': 25});
+        await db.createQL('person', {'name': 'Bob', 'age': 25});
 
-        final queryResponse = await db.query(
+        final queryResponse = await db.queryQL(
           'SELECT * FROM type::table(\$table_name) WHERE age >= \$min_age',
         );
         final queryResults = queryResponse.getResults();
@@ -100,7 +100,7 @@ void main() {
         await db.set('base_value', 10);
 
         // Execute function with parameters via query
-        final response = await db.query('RETURN \$base_value * \$multiplier');
+        final response = await db.queryQL('RETURN \$base_value * \$multiplier');
         final results = response.getResults();
         expect(results.first, equals(20));
 
@@ -134,7 +134,7 @@ void main() {
       try {
         // Test QueryException for invalid query
         expect(
-          () => db.query('INVALID QUERY SYNTAX'),
+          () => db.queryQL('INVALID QUERY SYNTAX'),
           throwsA(isA<QueryException>()),
         );
 
@@ -152,7 +152,7 @@ void main() {
 
         // Verify exceptions have proper inheritance
         try {
-          await db.query('INVALID SYNTAX');
+          await db.queryQL('INVALID SYNTAX');
         } on DatabaseException catch (e) {
           // Should catch as base DatabaseException
           expect(e, isA<QueryException>());
@@ -178,11 +178,11 @@ void main() {
         );
 
         // Create data
-        final record = await db.create('person', {'name': 'RocksDB Test'});
+        final record = await db.createQL('person', {'name': 'RocksDB Test'});
         expect(record['name'], equals('RocksDB Test'));
 
         // Query data using select (returns List directly)
-        final results = await db.select('person');
+        final results = await db.selectQL('person');
         expect(results, hasLength(1));
 
         // Close database
@@ -198,7 +198,7 @@ void main() {
         );
 
         // Verify data persisted
-        final persistedResults = await db.select('person');
+        final persistedResults = await db.selectQL('person');
         expect(persistedResults, hasLength(1));
         expect(persistedResults.first['name'], equals('RocksDB Test'));
       } finally {
@@ -260,11 +260,11 @@ void main() {
         await db.set('limit', 10);
 
         // Create test data
-        await db.create('person', {'name': 'Alice', 'status': 'active'});
-        await db.create('person', {'name': 'Bob', 'status': 'inactive'});
+        await db.createQL('person', {'name': 'Alice', 'status': 'active'});
+        await db.createQL('person', {'name': 'Bob', 'status': 'inactive'});
 
         // Use parameters in first query
-        var response = await db.query(
+        var response = await db.queryQL(
           'SELECT * FROM person WHERE status = \$status LIMIT \$limit',
         );
         var results = response.getResults();
@@ -274,13 +274,13 @@ void main() {
         await db.unset('status');
 
         // Verify remaining parameters still work
-        response = await db.query('RETURN \$user_id');
+        response = await db.queryQL('RETURN \$user_id');
         results = response.getResults();
         expect(results.first, equals('person:alice'));
 
         // Overwrite existing parameter
         await db.set('user_id', 'person:bob');
-        response = await db.query('RETURN \$user_id');
+        response = await db.queryQL('RETURN \$user_id');
         results = response.getResults();
         expect(results.first, equals('person:bob'));
       } finally {
@@ -298,7 +298,7 @@ void main() {
 
       try {
         // Create record with various types
-        final record = await db.create('event', {
+        final record = await db.createQL('event', {
           'name': 'Conference',
           'date': Datetime(DateTime(2024, 6, 15)).toJson(),
           'duration': SurrealDuration(Duration(hours: 8)).toJson(),
@@ -336,23 +336,23 @@ void main() {
 
       try {
         // Create initial data
-        await db.create('person', {'name': 'Alice', 'age': 25});
+        await db.createQL('person', {'name': 'Alice', 'age': 25});
 
         // Trigger error with invalid query
         try {
-          await db.query('INVALID SYNTAX');
+          await db.queryQL('INVALID SYNTAX');
         } on QueryException catch (_) {
           // Expected - continue
         }
 
         // Verify database still functional after error
-        final results = await db.select('person');
+        final results = await db.selectQL('person');
         expect(results, hasLength(1));
 
         // Create more data after error
-        await db.create('person', {'name': 'Bob', 'age': 30});
+        await db.createQL('person', {'name': 'Bob', 'age': 30});
 
-        final newResults = await db.select('person');
+        final newResults = await db.selectQL('person');
         expect(newResults, hasLength(2));
 
         // Trigger parameter error
@@ -364,7 +364,7 @@ void main() {
 
         // Verify database still works
         await db.set('valid_param', 'value');
-        final paramResponse = await db.query('RETURN \$valid_param');
+        final paramResponse = await db.queryQL('RETURN \$valid_param');
         expect(paramResponse.getResults().first, equals('value'));
       } finally {
         await db.close();
@@ -425,8 +425,8 @@ void main() {
 
       try {
         // Create nodes
-        final alice = await db.create('person', {'name': 'Alice'});
-        final bob = await db.create('person', {'name': 'Bob'});
+        final alice = await db.createQL('person', {'name': 'Alice'});
+        final bob = await db.createQL('person', {'name': 'Bob'});
 
         // Parse RecordIds
         final aliceId = RecordId.parse(alice['id'] as String);
@@ -448,7 +448,7 @@ void main() {
           'since': 2020,
         };
 
-        final relation = await db.create('knows', relationData);
+        final relation = await db.createQL('knows', relationData);
         expect(relation['in'], equals(aliceId.toString()));
         expect(relation['out'], equals(bobId.toString()));
       } finally {
@@ -571,7 +571,7 @@ void main() {
         await db.set('min_salary', 50000);
 
         // Step 2: Create records with complex types
-        await db.create('employee', {
+        await db.createQL('employee', {
           'name': 'Alice',
           'department': 'Engineering',
           'salary': 75000,
@@ -579,7 +579,7 @@ void main() {
           'contract_duration': SurrealDuration(Duration(days: 730)).toJson(),
         });
 
-        await db.create('employee', {
+        await db.createQL('employee', {
           'name': 'Bob',
           'department': 'Engineering',
           'salary': 65000,
@@ -588,7 +588,7 @@ void main() {
         });
 
         // Step 3: Query with parameters
-        final queryResponse = await db.query(
+        final queryResponse = await db.queryQL(
           'SELECT * FROM employee WHERE department = \$department AND salary >= \$min_salary',
         );
         final queryResults = queryResponse.getResults();
@@ -600,7 +600,7 @@ void main() {
 
         // Step 5: Update parameters and re-query
         await db.set('min_salary', 70000);
-        final filteredResponse = await db.query(
+        final filteredResponse = await db.queryQL(
           'SELECT * FROM employee WHERE salary >= \$min_salary',
         );
         final filteredResults = filteredResponse.getResults();

@@ -42,7 +42,7 @@ void main() {
       final embedding = VectorValue.f32([0.1, 0.2, 0.3, 0.4, 0.5]);
 
       // Create record with vector field
-      final record = await db.create('documents', {
+      final record = await db.createQL('documents', {
         'title': 'Test Document',
         'content': 'Test content',
         'embedding': embedding.toJson(),
@@ -74,7 +74,7 @@ void main() {
     test('retrieve vector from database and convert with VectorValue.fromJson()', () async {
       // Create a record with a vector
       final originalVector = VectorValue.fromList([1.0, 2.0, 3.0, 4.0]);
-      final created = await db.create('embeddings', {
+      final created = await db.createQL('embeddings', {
         'name': 'test_vector',
         'data': originalVector.toJson(),
       });
@@ -108,7 +108,7 @@ void main() {
     test('update vector field in existing record', () async {
       // Create initial record
       final initialVector = VectorValue.f32([0.1, 0.2, 0.3]);
-      final created = await db.create('vectors', {
+      final created = await db.createQL('vectors', {
         'version': 1,
         'embedding': initialVector.toJson(),
       });
@@ -117,7 +117,7 @@ void main() {
 
       // Update with new vector
       final updatedVector = VectorValue.f32([0.4, 0.5, 0.6]);
-      final updated = await db.update(recordId, {
+      final updated = await db.updateQL(recordId, {
         'version': 2,
         'embedding': updatedVector.toJson(),
       });
@@ -149,7 +149,7 @@ void main() {
       await db.set('vec2', vec2.toJson());
       await db.set('vec3', vec3.toJson());
 
-      final response = await db.query('''
+      final response = await db.queryQL('''
         INSERT INTO batch_vectors [
           { name: "x_axis", vector: \$vec1 },
           { name: "y_axis", vector: \$vec2 },
@@ -163,7 +163,7 @@ void main() {
       expect(results, isNotEmpty);
 
       // Verify batch insert worked by selecting all records
-      final allRecords = await db.select('batch_vectors');
+      final allRecords = await db.selectQL('batch_vectors');
       expect(allRecords, hasLength(3));
 
       // Verify each vector
@@ -199,7 +199,7 @@ void main() {
         final vector = testVectors[i];
 
         // Create record
-        final created = await db.create('format_test', {
+        final created = await db.createQL('format_test', {
           'index': i,
           'format': vector.format.name,
           'data': vector.toJson(),
@@ -233,7 +233,7 @@ void main() {
         }
 
         // Clean up for next iteration
-        await db.delete(recordId);
+        await db.deleteQL(recordId);
       }
     });
 
@@ -246,7 +246,7 @@ void main() {
       expect(largeVector.dimensions, equals(768));
 
       // Store in database
-      final created = await db.create('large_embeddings', {
+      final created = await db.createQL('large_embeddings', {
         'model': 'test-model',
         'embedding': largeVector.toJson(),
       });

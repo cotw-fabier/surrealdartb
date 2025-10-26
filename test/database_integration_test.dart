@@ -30,7 +30,7 @@ void main() {
 
       try {
         // Verify table exists by creating a record
-        final user = await db.create('users', {
+        final user = await db.createQL('users', {
           'name': 'Test User',
           'email': 'test@example.com',
         });
@@ -63,7 +63,7 @@ void main() {
       try {
         // Table should not exist yet, so create should succeed
         // (SurrealDB allows creating records in non-existent tables)
-        final product = await db.create('products', {
+        final product = await db.createQL('products', {
           'name': 'Test Product',
           'price': 29.99,
         });
@@ -102,7 +102,7 @@ void main() {
         expect(report.hasChanges, isTrue);
 
         // Verify table exists
-        final post = await db.create('posts', {
+        final post = await db.createQL('posts', {
           'title': 'Test Post',
           'content': 'Test content',
         });
@@ -176,7 +176,7 @@ void main() {
         expect(report.tablesAdded, contains('reviews'));
 
         // Verify table exists
-        final review = await db.create('reviews', {
+        final review = await db.createQL('reviews', {
           'rating': 5,
           'comment': 'Great!',
         });

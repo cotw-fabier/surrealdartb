@@ -33,10 +33,10 @@ void main() {
       await db.set('name', 'Alice');
 
       // Create a record to query
-      await db.create('person', {'name': 'Alice', 'age': 30});
+      await db.createQL('person', {'name': 'Alice', 'age': 30});
 
       // Use the parameter in a query
-      final response = await db.query('SELECT * FROM person WHERE name = \$name');
+      final response = await db.queryQL('SELECT * FROM person WHERE name = \$name');
       final results = response.getResults();
 
       expect(results, isNotEmpty);
@@ -48,11 +48,11 @@ void main() {
       await db.set('min_age', 25);
 
       // Create records
-      await db.create('person', {'name': 'Alice', 'age': 30});
-      await db.create('person', {'name': 'Bob', 'age': 20});
+      await db.createQL('person', {'name': 'Alice', 'age': 30});
+      await db.createQL('person', {'name': 'Bob', 'age': 20});
 
       // Use parameter in query
-      final response = await db.query('SELECT * FROM person WHERE age >= \$min_age');
+      final response = await db.queryQL('SELECT * FROM person WHERE age >= \$min_age');
       final results = response.getResults();
 
       expect(results.length, equals(1));
@@ -64,7 +64,7 @@ void main() {
       await db.set('filter', {'min_age': 25, 'max_age': 35});
 
       // Verify parameter was set (by using it in a query)
-      final response = await db.query('RETURN \$filter');
+      final response = await db.queryQL('RETURN \$filter');
       final results = response.getResults();
 
       expect(results, isNotEmpty);
@@ -78,7 +78,7 @@ void main() {
       await db.set('temp_value', 42);
 
       // Verify it exists
-      var response = await db.query('RETURN \$temp_value');
+      var response = await db.queryQL('RETURN \$temp_value');
       var results = response.getResults();
       expect(results.first, equals(42));
 
@@ -87,7 +87,7 @@ void main() {
 
       // Verify it's been removed (query should fail or return null)
       try {
-        response = await db.query('RETURN \$temp_value');
+        response = await db.queryQL('RETURN \$temp_value');
         results = response.getResults();
         // If query succeeds, parameter should be null
         expect(results.first, isNull);
@@ -112,24 +112,24 @@ void main() {
       await db.set('status', 'active');
 
       // Create records
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'Alice',
         'age': 25,
         'status': 'active',
       });
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'Bob',
         'age': 45,
         'status': 'active',
       });
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'Charlie',
         'age': 30,
         'status': 'inactive',
       });
 
       // Use multiple parameters in query
-      final response = await db.query(
+      final response = await db.queryQL(
         'SELECT * FROM person WHERE age >= \$min_age AND age <= \$max_age AND status = \$status',
       );
       final results = response.getResults();
@@ -142,13 +142,13 @@ void main() {
       // Set initial value
       await db.set('value', 'initial');
 
-      var response = await db.query('RETURN \$value');
+      var response = await db.queryQL('RETURN \$value');
       expect(response.getResults().first, equals('initial'));
 
       // Overwrite with new value
       await db.set('value', 'updated');
 
-      response = await db.query('RETURN \$value');
+      response = await db.queryQL('RETURN \$value');
       expect(response.getResults().first, equals('updated'));
     });
 

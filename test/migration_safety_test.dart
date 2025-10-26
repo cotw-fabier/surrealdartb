@@ -33,7 +33,7 @@ void main() {
       await engine.executeMigration(db, [originalTable]);
 
       // Insert some test data
-      await db.query(
+      await db.queryQL(
         "CREATE products SET name = 'Test Product', price = 19.99",
       );
 

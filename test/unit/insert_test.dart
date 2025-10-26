@@ -46,7 +46,7 @@ void main() {
       expect(result['email'], equals('alice@example.com'));
 
       // Verify we can query it back
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       expect(persons.length, equals(1));
       expect(persons.first['name'], equals('Alice'));
     });
@@ -66,8 +66,8 @@ void main() {
 
     test('insertRelation creates graph relationship', () async {
       // First create two person records
-      final alice = await db.create('person', {'name': 'Alice'});
-      final bob = await db.create('person', {'name': 'Bob'});
+      final alice = await db.createQL('person', {'name': 'Alice'});
+      final bob = await db.createQL('person', {'name': 'Bob'});
 
       final aliceId = RecordId.parse(alice['id'] as String);
       final bobId = RecordId.parse(bob['id'] as String);
@@ -105,7 +105,7 @@ void main() {
     });
 
     test('insertRelation throws on missing in field', () async {
-      final bob = await db.create('person', {'name': 'Bob'});
+      final bob = await db.createQL('person', {'name': 'Bob'});
       final bobId = RecordId.parse(bob['id'] as String);
 
       // Missing 'in' field should throw
@@ -118,7 +118,7 @@ void main() {
     });
 
     test('insertRelation throws on missing out field', () async {
-      final alice = await db.create('person', {'name': 'Alice'});
+      final alice = await db.createQL('person', {'name': 'Alice'});
       final aliceId = RecordId.parse(alice['id'] as String);
 
       // Missing 'out' field should throw
@@ -151,7 +151,7 @@ void main() {
       expect(person3['name'], equals('Charlie'));
 
       // Verify they're all in the database
-      final allPersons = await db.select('person');
+      final allPersons = await db.selectQL('person');
       expect(allPersons.length, equals(3));
     });
   });

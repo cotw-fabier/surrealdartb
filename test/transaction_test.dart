@@ -60,7 +60,7 @@ void main() {
 
       // Verify the record exists after transaction
       print('[TEST] Verifying record exists after commit...');
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       print('[TEST] Records found: $persons');
       expect(persons, hasLength(1));
       expect(persons[0]['name'], 'Alice');
@@ -71,7 +71,7 @@ void main() {
       print('\n[TEST] Starting: transaction rolls back on exception');
 
       // First, verify no records exist
-      var persons = await db.select('person');
+      var persons = await db.selectQL('person');
       print('[TEST] Initial person count: ${persons.length}');
       expect(persons, isEmpty);
 
@@ -99,7 +99,7 @@ void main() {
 
       // Verify the record was rolled back (should not exist)
       print('[TEST] Verifying record was rolled back...');
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       print('[TEST] Person count after rollback: ${persons.length}');
       print('[TEST] Records found: $persons');
       expect(persons, isEmpty);
@@ -140,7 +140,7 @@ void main() {
       expect(result['person2_id'], isNotNull);
 
       print('[TEST] Verifying both records exist...');
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       print('[TEST] Records found: ${persons.length}');
       expect(persons, hasLength(2));
       print('[TEST] Test completed successfully\n');
@@ -178,7 +178,7 @@ void main() {
 
       // Setup: Create initial record outside transaction
       print('[TEST] Creating initial record outside transaction...');
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'Initial',
         'age': 40,
       });
@@ -203,7 +203,7 @@ void main() {
 
       // Verify the update was committed
       print('[TEST] Verifying update was committed...');
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       print('[TEST] Records found: $persons');
       expect(persons, hasLength(1));
       expect(persons[0]['name'], 'Updated');
@@ -216,13 +216,13 @@ void main() {
 
       // Create initial record
       print('[TEST] Creating initial record...');
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'Original',
         'age': 50,
       });
 
       // Verify initial state
-      var persons = await db.select('person');
+      var persons = await db.selectQL('person');
       print('[TEST] Initial state: ${persons.length} records');
       print('[TEST] Initial records: $persons');
       expect(persons, hasLength(1));
@@ -263,7 +263,7 @@ void main() {
 
       // Verify only original record remains
       print('[TEST] Verifying rollback completed...');
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       print('[TEST] Final state: ${persons.length} records');
       print('[TEST] Final records: $persons');
       expect(persons, hasLength(1));
@@ -314,9 +314,9 @@ void main() {
       expect(result["account"]!["balance"], 1000);
 
       print('[TEST] Verifying all records exist...');
-      final persons = await db.select('person');
-      final accounts = await db.select('account');
-      final transactions = await db.select('transaction');
+      final persons = await db.selectQL('person');
+      final accounts = await db.selectQL('account');
+      final transactions = await db.selectQL('transaction');
 
       print('[TEST] Persons: ${persons.length}, Accounts: ${accounts.length}, Transactions: ${transactions.length}');
       expect(persons, hasLength(1));
@@ -330,21 +330,21 @@ void main() {
 
       // Create records first
       print('[TEST] Creating person 1...');
-      final person1 = await db.create('person', {
+      final person1 = await db.createQL('person', {
         'name': 'ToDelete1',
         'age': 60,
       });
       print('[TEST] Created person1: $person1');
 
       print('[TEST] Creating person 2...');
-      final person2 = await db.create('person', {
+      final person2 = await db.createQL('person', {
         'name': 'ToDelete2',
         'age': 61,
       });
       print('[TEST] Created person2: $person2');
 
       // Verify created
-      var persons = await db.select('person');
+      var persons = await db.selectQL('person');
       print('[TEST] Initial record count: ${persons.length}');
       expect(persons, hasLength(2));
 
@@ -360,7 +360,7 @@ void main() {
 
       // Verify both deleted
       print('[TEST] Verifying deletes were committed...');
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       print('[TEST] Final record count: ${persons.length}');
       expect(persons, isEmpty);
       print('[TEST] Test completed successfully\n');

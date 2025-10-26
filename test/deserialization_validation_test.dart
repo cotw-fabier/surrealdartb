@@ -39,7 +39,7 @@ void main() {
 
     test('Test 1: SELECT returns clean JSON (no type wrappers)', () async {
       // Create a test record with various data types
-      final createResponse = await db.create('person', {
+      final createResponse = await db.createQL('person', {
         'name': 'Alice Smith',
         'age': 28,
         'isActive': true,
@@ -50,7 +50,7 @@ void main() {
       expect(createResponse['name'], equals('Alice Smith'));
 
       // Now SELECT and verify response format
-      final selectResponse = await db.select('person');
+      final selectResponse = await db.selectQL('person');
 
       expect(selectResponse, isA<List>());
       expect(selectResponse, isNotEmpty);
@@ -82,7 +82,7 @@ void main() {
     test('Test 2: CREATE returns record with correct field values (not null)',
         () async {
       // Create record with multiple field types
-      final record = await db.create('product', {
+      final record = await db.createQL('product', {
         'name': 'Laptop',
         'price': 999.99,
         'quantity': 42,
@@ -135,7 +135,7 @@ void main() {
 
     test('Test 3: Nested structures deserialize properly', () async {
       // Create record with complex nested structure
-      final complexRecord = await db.create('order', {
+      final complexRecord = await db.createQL('order', {
         'orderId': 'ORD-12345',
         'customer': {
           'name': 'Bob Johnson',
@@ -226,12 +226,12 @@ void main() {
 
     test('Test 4: Thing IDs formatted as "table:id" strings', () async {
       // Create multiple records
-      final person1 = await db.create('person', {
+      final person1 = await db.createQL('person', {
         'name': 'Charlie',
         'age': 35,
       });
 
-      final person2 = await db.create('person', {
+      final person2 = await db.createQL('person', {
         'name': 'Diana',
         'age': 42,
       });
@@ -255,7 +255,7 @@ void main() {
       expect(id1, isNot(equals(id2)));
 
       // Query with SELECT and verify IDs remain in correct format
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       expect(persons.length, equals(2));
 
       for (final person in persons) {
@@ -274,7 +274,7 @@ void main() {
       }
 
       // Use raw query to verify ID format is consistent
-      final queryResponse = await db.query('SELECT id FROM person');
+      final queryResponse = await db.queryQL('SELECT id FROM person');
       final queryResults = queryResponse.getResults();
 
       expect(queryResults, isNotEmpty);

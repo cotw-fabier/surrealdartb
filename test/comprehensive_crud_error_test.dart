@@ -74,7 +74,7 @@ void main() {
         },
       };
 
-      final record = await db.create('product', complexData);
+      final record = await db.createQL('product', complexData);
 
       // Verify record structure
       expect(record, isA<Map<String, dynamic>>());
@@ -132,7 +132,7 @@ void main() {
     // Test 2: UPDATE operation returns updated record
     test('Test 2: UPDATE operation returns updated record', () async {
       // Create initial record
-      final initialRecord = await db.create('user', {
+      final initialRecord = await db.createQL('user', {
         'username': 'johndoe',
         'email': 'john@example.com',
         'status': 'active',
@@ -145,7 +145,7 @@ void main() {
       final userId = initialRecord['id'] as String;
 
       // Update the record
-      final updatedRecord = await db.update(userId, {
+      final updatedRecord = await db.updateQL(userId, {
         'email': 'john.doe@newdomain.com',
         'status': 'premium',
         'loginCount': 42,
@@ -164,7 +164,7 @@ void main() {
       expect(updatedRecord['lastLogin'], equals('2025-10-21T15:30:00Z')); // New field
 
       // Verify the changes persisted by selecting the record
-      final selectedRecords = await db.select('user');
+      final selectedRecords = await db.selectQL('user');
       expect(selectedRecords.length, equals(1));
 
       final selectedRecord = selectedRecords.first as Map<String, dynamic>;
@@ -177,29 +177,29 @@ void main() {
     // Test 3: DELETE operation completes successfully
     test('Test 3: DELETE operation completes successfully', () async {
       // Create multiple records
-      final person1 = await db.create('person', {
+      final person1 = await db.createQL('person', {
         'name': 'Alice',
         'age': 28,
       });
-      final person2 = await db.create('person', {
+      final person2 = await db.createQL('person', {
         'name': 'Bob',
         'age': 35,
       });
-      final person3 = await db.create('person', {
+      final person3 = await db.createQL('person', {
         'name': 'Charlie',
         'age': 42,
       });
 
       // Verify all created
-      var allPersons = await db.select('person');
+      var allPersons = await db.selectQL('person');
       expect(allPersons.length, equals(3));
 
       // Delete one record
       final person1Id = person1['id'] as String;
-      await db.delete(person1Id);
+      await db.deleteQL(person1Id);
 
       // Verify record is deleted
-      allPersons = await db.select('person');
+      allPersons = await db.selectQL('person');
       expect(allPersons.length, equals(2));
 
       final remainingIds = allPersons
@@ -211,27 +211,27 @@ void main() {
 
       // Delete another record
       final person2Id = person2['id'] as String;
-      await db.delete(person2Id);
+      await db.deleteQL(person2Id);
 
       // Verify only one record remains
-      allPersons = await db.select('person');
+      allPersons = await db.selectQL('person');
       expect(allPersons.length, equals(1));
       final remaining = allPersons.first as Map<String, dynamic>;
       expect(remaining['id'], equals(person3['id']));
       expect(remaining['name'], equals('Charlie'));
 
       // Delete final record
-      await db.delete(person3['id'] as String);
+      await db.deleteQL(person3['id'] as String);
 
       // Verify table is empty
-      allPersons = await db.select('person');
+      allPersons = await db.selectQL('person');
       expect(allPersons, isEmpty);
     });
 
     // Test 4: Raw query() with multiple SurrealQL statements
     test('Test 4: Raw query() with multiple SurrealQL statements', () async {
       // Execute multiple statements in a single query
-      final response = await db.query('''
+      final response = await db.queryQL('''
         CREATE company:tech1 SET name = "TechCorp", employees = 250;
         CREATE company:tech2 SET name = "InnovateLabs", employees = 120;
         CREATE employee:emp1 SET name = "Alice Johnson", company = company:tech1, role = "Engineer";
@@ -292,7 +292,7 @@ void main() {
     test('Test 5: Error handling (invalid SQL, closed database)', () async {
       // Test invalid SQL syntax
       try {
-        await db.query('THIS IS INVALID SQL SYNTAX');
+        await db.queryQL('THIS IS INVALID SQL SYNTAX');
         fail('Should have thrown QueryException');
       } catch (e) {
         expect(e, isA<QueryException>());
@@ -302,7 +302,7 @@ void main() {
 
       // Test invalid table reference
       try {
-        await db.query('SELECT * FROM nonexistent.table.with.dots');
+        await db.queryQL('SELECT * FROM nonexistent.table.with.dots');
         // This might succeed with empty results or fail - either is acceptable
       } catch (e) {
         expect(e, isA<QueryException>());
@@ -314,7 +314,7 @@ void main() {
 
       // Test operations on closed database
       try {
-        await db.query('SELECT * FROM person');
+        await db.queryQL('SELECT * FROM person');
         fail('Should have thrown StateError');
       } catch (e) {
         expect(e, isA<StateError>());
@@ -324,7 +324,7 @@ void main() {
 
       // Test CREATE on closed database
       try {
-        await db.create('person', {'name': 'Test'});
+        await db.createQL('person', {'name': 'Test'});
         fail('Should have thrown StateError');
       } catch (e) {
         expect(e, isA<StateError>());
@@ -332,7 +332,7 @@ void main() {
 
       // Test SELECT on closed database
       try {
-        await db.select('person');
+        await db.selectQL('person');
         fail('Should have thrown StateError');
       } catch (e) {
         expect(e, isA<StateError>());
@@ -340,7 +340,7 @@ void main() {
 
       // Test UPDATE on closed database
       try {
-        await db.update('person:test', {'name': 'Updated'});
+        await db.updateQL('person:test', {'name': 'Updated'});
         fail('Should have thrown StateError');
       } catch (e) {
         expect(e, isA<StateError>());
@@ -348,7 +348,7 @@ void main() {
 
       // Test DELETE on closed database
       try {
-        await db.delete('person:test');
+        await db.deleteQL('person:test');
         fail('Should have thrown StateError');
       } catch (e) {
         expect(e, isA<StateError>());
@@ -457,28 +457,28 @@ void main() {
     // Test 7: Namespace/database switching
     test('Test 7: Namespace/database switching', () async {
       // Create data in initial namespace/database
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'User in test namespace',
         'location': 'test/test',
       });
 
-      var persons = await db.select('person');
+      var persons = await db.selectQL('person');
       expect(persons.length, equals(1));
 
       // Switch to different database in same namespace
       await db.useDatabase('other_db');
 
       // Should be empty in new database
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       expect(persons, isEmpty);
 
       // Create data in new database
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'User in other database',
         'location': 'test/other_db',
       });
 
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       expect(persons.length, equals(1));
       final person1 = persons.first as Map<String, dynamic>;
       expect(person1['location'], equals('test/other_db'));
@@ -487,16 +487,16 @@ void main() {
       await db.useNamespace('production');
 
       // Should be empty in new namespace
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       expect(persons, isEmpty);
 
       // Create data in new namespace
-      await db.create('person', {
+      await db.createQL('person', {
         'name': 'User in production',
         'location': 'production/other_db',
       });
 
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       expect(persons.length, equals(1));
       final person2 = persons.first as Map<String, dynamic>;
       expect(person2['location'], equals('production/other_db'));
@@ -506,7 +506,7 @@ void main() {
       await db.useDatabase('test');
 
       // Should see original data
-      persons = await db.select('person');
+      persons = await db.selectQL('person');
       expect(persons.length, equals(1));
       final person3 = persons.first as Map<String, dynamic>;
       expect(person3['location'], equals('test/test'));
@@ -519,7 +519,7 @@ void main() {
       final recordIds = <String>[];
 
       for (int i = 0; i < 100; i++) {
-        final record = await db.create('load_test', {
+        final record = await db.createQL('load_test', {
           'index': i,
           'name': 'Record $i',
           'description': 'This is test record number $i for load testing',
@@ -541,11 +541,11 @@ void main() {
       }
 
       // Verify all records are queryable
-      final allRecords = await db.select('load_test');
+      final allRecords = await db.selectQL('load_test');
       expect(allRecords.length, equals(100));
 
       // Query with ordering to verify database can handle it
-      final response = await db.query('SELECT * FROM load_test ORDER BY index');
+      final response = await db.queryQL('SELECT * FROM load_test ORDER BY index');
       final results = response.getResults();
       expect(results.length, equals(1));
 
@@ -560,14 +560,14 @@ void main() {
 
       // Update a subset of records
       for (int i = 0; i < 20; i++) {
-        await db.update(recordIds[i], {
+        await db.updateQL(recordIds[i], {
           'updated': true,
           'updateTime': '2025-10-21T12:00:00Z',
         });
       }
 
       // Verify updates persisted
-      final updatedResponse = await db.query(
+      final updatedResponse = await db.queryQL(
         'SELECT * FROM load_test WHERE updated = true',
       );
       final updatedResults = updatedResponse.getResults();
@@ -576,15 +576,15 @@ void main() {
 
       // Delete a subset of records
       for (int i = 0; i < 10; i++) {
-        await db.delete(recordIds[i]);
+        await db.deleteQL(recordIds[i]);
       }
 
       // Verify deletions
-      final remainingRecords = await db.select('load_test');
+      final remainingRecords = await db.selectQL('load_test');
       expect(remainingRecords.length, equals(90));
 
       // Perform complex query to stress the system
-      final complexResponse = await db.query('''
+      final complexResponse = await db.queryQL('''
         SELECT
           metadata.batch as batch,
           count() as record_count,
@@ -603,7 +603,7 @@ void main() {
 
       // Verify no memory leaks by doing one more large operation
       // If there were leaks, this would compound them
-      final finalRecords = await db.select('load_test');
+      final finalRecords = await db.selectQL('load_test');
       expect(finalRecords.length, equals(90));
 
       // Success - no errors indicate stable memory management
@@ -646,7 +646,7 @@ void main() {
       try {
         // Test malformed SurrealQL
         try {
-          await db.query('INVALID STATEMENT WITH { SYNTAX ERRORS ]');
+          await db.queryQL('INVALID STATEMENT WITH { SYNTAX ERRORS ]');
           fail('Should have thrown QueryException');
         } catch (e) {
           expect(e, isA<QueryException>());
@@ -658,7 +658,7 @@ void main() {
         // Note: SurrealDB is quite permissive, so this may succeed
         // The test is here to ensure we don't crash on edge cases
         try {
-          await db.create('test_table', {
+          await db.createQL('test_table', {
             'valid_field': 'value',
           });
           // Success is acceptable - SurrealDB handles this

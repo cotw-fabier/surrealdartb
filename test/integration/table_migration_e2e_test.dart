@@ -70,7 +70,7 @@ void main() {
 
       try {
         // Assert: Tables should be created
-        final userCreated = await db.create('users', {
+        final userCreated = await db.createQL('users', {
           'username': 'testuser',
           'email': 'test@example.com',
           'created_at': DateTime.now().toIso8601String(),
@@ -79,7 +79,7 @@ void main() {
         expect(userCreated['username'], equals('testuser'));
         expect(userCreated['is_active'], isTrue); // Default value
 
-        final postCreated = await db.create('posts', {
+        final postCreated = await db.createQL('posts', {
           'title': 'First Post',
           'content': 'Hello World',
           'author_id': userCreated['id'],
@@ -89,7 +89,7 @@ void main() {
         expect(postCreated['views'], equals(0)); // Default value
 
         // Verify migration history
-        final historyResponse = await db.query(
+        final historyResponse = await db.queryQL(
           'SELECT * FROM _migrations ORDER BY applied_at DESC LIMIT 1',
         );
         final history = historyResponse.getResults();
@@ -130,7 +130,7 @@ void main() {
       );
 
       // Create initial data
-      await db.create('products', {
+      await db.createQL('products', {
         'name': 'Widget',
         'price': 19.99,
       });
@@ -164,13 +164,13 @@ void main() {
 
       try {
         // Verify existing data is preserved
-        final existingProducts = await db.query('SELECT * FROM products');
+        final existingProducts = await db.queryQL('SELECT * FROM products');
         final products = existingProducts.getResults();
         expect(products, hasLength(1));
         expect(products.first['name'], equals('Widget'));
 
         // Verify new fields can be used
-        await db.create('products', {
+        await db.createQL('products', {
           'name': 'Gadget',
           'price': 29.99,
           'description': 'A useful gadget',
@@ -178,7 +178,7 @@ void main() {
         });
 
         // Verify migration history shows evolution
-        final historyResponse = await db.query(
+        final historyResponse = await db.queryQL(
           'SELECT * FROM _migrations ORDER BY applied_at DESC',
         );
         final history = historyResponse.getResults();
@@ -220,7 +220,7 @@ void main() {
           List.generate(384, (i) => i * 0.001),
         );
 
-        final doc = await db.create('documents', {
+        final doc = await db.createQL('documents', {
           'title': 'Test Document',
           'content': 'This is a test document for vector search.',
           'embedding': sampleEmbedding.data,
@@ -232,7 +232,7 @@ void main() {
         expect(doc['embedding'], hasLength(384));
 
         // Verify vector field exists in schema
-        final schemaInfo = await db.query('INFO FOR TABLE documents');
+        final schemaInfo = await db.queryQL('INFO FOR TABLE documents');
         final tableInfo = schemaInfo.getResults().first as Map<String, dynamic>;
         expect(tableInfo['fields'], contains('embedding'));
       } finally {
@@ -269,7 +269,7 @@ void main() {
 
       try {
         // Insert data with nested object
-        final profile = await db.create('user_profiles', {
+        final profile = await db.createQL('user_profiles', {
           'username': 'alice',
           'settings': {
             'theme': 'dark',
@@ -306,7 +306,7 @@ void main() {
         expect(report.success, isTrue);
 
         // Create new profile with evolved schema
-        final newProfile = await db.create('user_profiles', {
+        final newProfile = await db.createQL('user_profiles', {
           'username': 'bob',
           'settings': {
             'theme': 'light',
@@ -374,7 +374,7 @@ void main() {
 
       try {
         // Create user
-        final user = await db.create('users', {
+        final user = await db.createQL('users', {
           'username': 'alice',
           'email': 'alice@example.com',
           'profile': {
@@ -390,7 +390,7 @@ void main() {
 
         // Create post with vector embedding
         final embedding = List.generate(128, (i) => i * 0.01);
-        final post = await db.create('posts', {
+        final post = await db.createQL('posts', {
           'title': 'Introduction to Vectors',
           'content': 'Vectors are useful for semantic search...',
           'author_id': user['id'],
@@ -400,7 +400,7 @@ void main() {
         });
 
         // Create comment
-        final comment = await db.create('comments', {
+        final comment = await db.createQL('comments', {
           'post_id': post['id'],
           'author_id': user['id'],
           'content': 'Great article!',
@@ -408,7 +408,7 @@ void main() {
         });
 
         // Verify relationships work
-        final postWithComments = await db.query('''
+        final postWithComments = await db.queryQL('''
           SELECT *, (
             SELECT * FROM comments WHERE post_id = \$parent.id
           ) AS comments FROM posts WHERE id = '${post['id']}'
@@ -419,7 +419,7 @@ void main() {
         expect(result['comments'], isNotEmpty);
 
         // Verify all tables created successfully
-        final schemaResponse = await db.query('INFO FOR DB');
+        final schemaResponse = await db.queryQL('INFO FOR DB');
         final schema = schemaResponse.getResults().first as Map<String, dynamic>;
         final tables = schema['tables'] as Map<String, dynamic>;
 
@@ -486,7 +486,7 @@ void main() {
 
       try {
         // Query migration history
-        final historyResponse = await db.query(
+        final historyResponse = await db.queryQL(
           'SELECT * FROM _migrations ORDER BY applied_at ASC',
         );
         final history = historyResponse.getResults();
@@ -540,7 +540,7 @@ void main() {
         expect(report2.generatedDDL, isEmpty);
 
         // Verify table still works correctly
-        final record = await db.create('idempotent_test', {
+        final record = await db.createQL('idempotent_test', {
           'field1': 'test',
           'field2': 42,
         });
@@ -605,7 +605,7 @@ void main() {
 
       try {
         // Verify all tables were created
-        final schemaResponse = await db.query('INFO FOR DB');
+        final schemaResponse = await db.queryQL('INFO FOR DB');
         final schema = schemaResponse.getResults().first as Map<String, dynamic>;
         final dbTables = schema['tables'] as Map<String, dynamic>;
 
@@ -613,21 +613,21 @@ void main() {
         expect(dbTables.keys.length, greaterThanOrEqualTo(10));
 
         // Test creating records in different tables
-        await db.create('table_1', {
+        await db.createQL('table_1', {
           'id_field': 'test1',
           'name': 'Table 1 Record',
           'count': 5,
           'created_at': DateTime.now().toIso8601String(),
         });
 
-        await db.create('table_2', {
+        await db.createQL('table_2', {
           'id_field': 'test2',
           'name': 'Table 2 Record',
           'embedding': List.generate(64, (i) => i * 0.01),
           'created_at': DateTime.now().toIso8601String(),
         });
 
-        await db.create('table_3', {
+        await db.createQL('table_3', {
           'id_field': 'test3',
           'name': 'Table 3 Record',
           'metadata': {
@@ -638,7 +638,7 @@ void main() {
         });
 
         // Verify migration completed successfully
-        final historyResponse = await db.query(
+        final historyResponse = await db.queryQL(
           'SELECT * FROM _migrations ORDER BY applied_at DESC LIMIT 1',
         );
         final history = historyResponse.getResults();
@@ -706,7 +706,7 @@ void main() {
         final now = DateTime.now();
 
         // Create user
-        final user = await db.create('users', {
+        final user = await db.createQL('users', {
           'email': 'user@example.com',
           'password_hash': 'hashed_password_here',
           'created_at': now.toIso8601String(),
@@ -717,7 +717,7 @@ void main() {
         expect(user['deleted_at'], isNull);
 
         // Create session
-        await db.create('sessions', {
+        await db.createQL('sessions', {
           'user_id': user['id'],
           'token': 'session_token_123',
           'expires_at': now.add(Duration(hours: 24)).toIso8601String(),
@@ -727,7 +727,7 @@ void main() {
         });
 
         // Create audit log
-        await db.create('audit_logs', {
+        await db.createQL('audit_logs', {
           'entity_type': 'user',
           'entity_id': user['id'],
           'action': 'create',
@@ -741,11 +741,11 @@ void main() {
 
         // Verify all patterns work
         final sessionQuery =
-            await db.query("SELECT * FROM sessions WHERE user_id = '${user['id']}'");
+            await db.queryQL("SELECT * FROM sessions WHERE user_id = '${user['id']}'");
         expect(sessionQuery.getResults(), hasLength(1));
 
         final auditQuery =
-            await db.query("SELECT * FROM audit_logs WHERE action = 'create'");
+            await db.queryQL("SELECT * FROM audit_logs WHERE action = 'create'");
         expect(auditQuery.getResults(), hasLength(1));
       } finally {
         await db.close();
@@ -779,7 +779,7 @@ void main() {
 
       try {
         // Verify Phase 1-2: Basic types work
-        await db.create('integration_test', {
+        await db.createQL('integration_test', {
           'simple_string': 'test',
           'simple_int': 42,
         });
@@ -827,7 +827,7 @@ void main() {
         expect(migrationReport.success, isTrue);
 
         // Verify advanced types work
-        await db.create('integration_test', {
+        await db.createQL('integration_test', {
           'simple_string': 'advanced',
           'simple_int': 100,
           'tags': ['tag1', 'tag2'],

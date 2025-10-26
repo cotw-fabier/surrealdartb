@@ -202,27 +202,27 @@ void main() {
 
       // All operations should throw StateError when database is closed
       expect(
-        () => db.query('SELECT * FROM test'),
+        () => db.queryQL('SELECT * FROM test'),
         throwsStateError,
       );
 
       expect(
-        () => db.select('test'),
+        () => db.selectQL('test'),
         throwsStateError,
       );
 
       expect(
-        () => db.create('test', {'data': 'value'}),
+        () => db.createQL('test', {'data': 'value'}),
         throwsStateError,
       );
 
       expect(
-        () => db.update('test:id', {'data': 'value'}),
+        () => db.updateQL('test:id', {'data': 'value'}),
         throwsStateError,
       );
 
       expect(
-        () => db.delete('test:id'),
+        () => db.deleteQL('test:id'),
         throwsStateError,
       );
 

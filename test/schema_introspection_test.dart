@@ -29,14 +29,14 @@ void main() {
 
     test('3.1.1 - INFO FOR DB query executes successfully', () async {
       // Create a test table first
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE test_users SCHEMAFULL;
         DEFINE FIELD name ON test_users TYPE string;
         DEFINE FIELD age ON test_users TYPE int;
       ''');
 
       // Execute INFO FOR DB
-      final response = await db.query('INFO FOR DB');
+      final response = await db.queryQL('INFO FOR DB');
       final results = response.getResults();
 
       // Should return schema information
@@ -46,7 +46,7 @@ void main() {
 
     test('3.1.2 - INFO FOR DB returns table definitions', () async {
       // Create multiple tables
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE users SCHEMAFULL;
         DEFINE FIELD username ON users TYPE string;
 
@@ -55,7 +55,7 @@ void main() {
       ''');
 
       // Get database schema
-      final response = await db.query('INFO FOR DB');
+      final response = await db.queryQL('INFO FOR DB');
       final results = response.getResults();
       final info = results.first as Map<String, dynamic>;
 
@@ -68,7 +68,7 @@ void main() {
 
     test('3.1.3 - INFO FOR TABLE returns field metadata', () async {
       // Create table with fields
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE products SCHEMAFULL;
         DEFINE FIELD name ON products TYPE string;
         DEFINE FIELD price ON products TYPE float;
@@ -76,7 +76,7 @@ void main() {
       ''');
 
       // Get table schema
-      final response = await db.query('INFO FOR TABLE products');
+      final response = await db.queryQL('INFO FOR TABLE products');
       final results = response.getResults();
       final tableInfo = results.first as Map<String, dynamic>;
 
@@ -90,7 +90,7 @@ void main() {
 
     test('3.1.4 - Parse field type information', () async {
       // Create table with various field types
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE documents SCHEMAFULL;
         DEFINE FIELD title ON documents TYPE string;
         DEFINE FIELD views ON documents TYPE int;
@@ -100,7 +100,7 @@ void main() {
       ''');
 
       // Get table schema
-      final response = await db.query('INFO FOR TABLE documents');
+      final response = await db.queryQL('INFO FOR TABLE documents');
       final results = response.getResults();
       final tableInfo = results.first as Map<String, dynamic>;
       final fields = tableInfo['fields'] as Map<String, dynamic>;
@@ -113,14 +113,14 @@ void main() {
 
     test('3.1.5 - Parse index definitions', () async {
       // Create table with indexed fields
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE users SCHEMAFULL;
         DEFINE FIELD email ON users TYPE string;
         DEFINE INDEX idx_email ON users FIELDS email;
       ''');
 
       // Get table schema
-      final response = await db.query('INFO FOR TABLE users');
+      final response = await db.queryQL('INFO FOR TABLE users');
       final results = response.getResults();
       final tableInfo = results.first as Map<String, dynamic>;
 
@@ -132,7 +132,7 @@ void main() {
 
     test('3.1.6 - Handle empty database schema', () async {
       // Query schema without any tables defined
-      final response = await db.query('INFO FOR DB');
+      final response = await db.queryQL('INFO FOR DB');
       final results = response.getResults();
       final info = results.first as Map<String, dynamic>;
 
@@ -146,14 +146,14 @@ void main() {
 
     test('3.1.7 - Handle table with ASSERT clauses', () async {
       // Create table with ASSERT constraints
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE users SCHEMAFULL;
         DEFINE FIELD age ON users TYPE int ASSERT \$value >= 0 AND \$value <= 150;
         DEFINE FIELD email ON users TYPE string ASSERT string::is::email(\$value);
       ''');
 
       // Get table schema
-      final response = await db.query('INFO FOR TABLE users');
+      final response = await db.queryQL('INFO FOR TABLE users');
       final results = response.getResults();
       final tableInfo = results.first as Map<String, dynamic>;
 
@@ -166,7 +166,7 @@ void main() {
 
     test('3.1.8 - Handle optional and required fields', () async {
       // Create table with both optional and required fields
-      await db.query('''
+      await db.queryQL('''
         DEFINE TABLE profiles SCHEMAFULL;
         DEFINE FIELD username ON profiles TYPE string;
         DEFINE FIELD bio ON profiles TYPE option<string>;
@@ -174,7 +174,7 @@ void main() {
       ''');
 
       // Get table schema
-      final response = await db.query('INFO FOR TABLE profiles');
+      final response = await db.queryQL('INFO FOR TABLE profiles');
       final results = response.getResults();
       final tableInfo = results.first as Map<String, dynamic>;
 

@@ -33,10 +33,10 @@ void main() {
       // The Rust layer uses runtime.block_on() which allows this to work.
 
       // Start a create operation
-      final future1 = db.create('person', {'name': 'Person1'});
+      final future1 = db.createQL('person', {'name': 'Person1'});
 
       // Start another immediately (should not block)
-      final future2 = db.create('person', {'name': 'Person2'});
+      final future2 = db.createQL('person', {'name': 'Person2'});
 
       // Both should complete
       final results = await Future.wait([future1, future2]);
@@ -48,14 +48,14 @@ void main() {
 
     test('Multiple concurrent queries execute correctly', () async {
       // Create some test data first
-      await db.create('product', {'name': 'Laptop', 'price': 999.99});
-      await db.create('product', {'name': 'Mouse', 'price': 29.99});
-      await db.create('product', {'name': 'Keyboard', 'price': 79.99});
+      await db.createQL('product', {'name': 'Laptop', 'price': 999.99});
+      await db.createQL('product', {'name': 'Mouse', 'price': 29.99});
+      await db.createQL('product', {'name': 'Keyboard', 'price': 79.99});
 
       // Execute multiple queries concurrently
-      final future1 = db.query('SELECT * FROM product WHERE price > 50');
-      final future2 = db.query('SELECT * FROM product WHERE price < 50');
-      final future3 = db.select('product');
+      final future1 = db.queryQL('SELECT * FROM product WHERE price > 50');
+      final future2 = db.queryQL('SELECT * FROM product WHERE price < 50');
+      final future3 = db.selectQL('product');
 
       final results = await Future.wait([future1, future2, future3]);
 
@@ -80,22 +80,22 @@ void main() {
       // without issues from the direct FFI architecture.
 
       // Create a record
-      final person1 = await db.create('person', {
+      final person1 = await db.createQL('person', {
         'name': 'Alice',
         'age': 30,
       });
       final person1Id = person1['id'] as String;
 
       // Start multiple operations without awaiting
-      final createFuture = db.create('person', {'name': 'Bob', 'age': 25});
-      final selectFuture = db.select('person');
-      final updateFuture = db.update(person1Id, {'age': 31});
+      final createFuture = db.createQL('person', {'name': 'Bob', 'age': 25});
+      final selectFuture = db.selectQL('person');
+      final updateFuture = db.updateQL(person1Id, {'age': 31});
 
       // Wait for all to complete
       await Future.wait([createFuture, selectFuture, updateFuture]);
 
       // Verify final state
-      final allPersons = await db.select('person');
+      final allPersons = await db.selectQL('person');
       expect(allPersons.length, equals(2));
 
       final alice = allPersons.firstWhere(
@@ -106,10 +106,10 @@ void main() {
 
     test('Error handling works correctly with concurrent operations', () async {
       // Create a valid record
-      final validFuture = db.create('person', {'name': 'Valid'});
+      final validFuture = db.createQL('person', {'name': 'Valid'});
 
       // Try to execute invalid query concurrently
-      final invalidFuture = db.query('INVALID SYNTAX HERE');
+      final invalidFuture = db.queryQL('INVALID SYNTAX HERE');
 
       // Valid operation should succeed
       final validResult = await validFuture;
@@ -124,17 +124,17 @@ void main() {
       }
 
       // Database should still be usable after error
-      final persons = await db.select('person');
+      final persons = await db.selectQL('person');
       expect(persons, isNotEmpty);
     });
 
     test('Namespace switching is non-blocking', () async {
       // Create data in initial namespace
-      await db.create('person', {'name': 'User1'});
+      await db.createQL('person', {'name': 'User1'});
 
       // Switch namespace while creating more data
       final switchFuture = db.useNamespace('other_ns');
-      final createFuture = db.create('person', {'name': 'User2'});
+      final createFuture = db.createQL('person', {'name': 'User2'});
 
       await switchFuture;
 
@@ -143,7 +143,7 @@ void main() {
       await createFuture;
 
       // Verify we can continue operations
-      final result = await db.select('person');
+      final result = await db.selectQL('person');
       expect(result, isA<List>());
     });
 
@@ -155,7 +155,7 @@ void main() {
 
       // Perform a batch of operations
       for (int i = 0; i < 10; i++) {
-        await db.create('test', {
+        await db.createQL('test', {
           'index': i,
           'data': 'Test data $i',
         });
@@ -172,7 +172,7 @@ void main() {
       );
 
       // Verify all records were created
-      final records = await db.select('test');
+      final records = await db.selectQL('test');
       expect(records.length, equals(10));
     });
 
@@ -182,7 +182,7 @@ void main() {
 
       // Create 20 records
       for (int i = 0; i < 20; i++) {
-        final record = await db.create('cleanup_test', {
+        final record = await db.createQL('cleanup_test', {
           'index': i,
           'data': 'Test $i',
         });
@@ -191,15 +191,15 @@ void main() {
 
       // Delete all records
       for (final id in recordIds) {
-        await db.delete(id);
+        await db.deleteQL(id);
       }
 
       // Verify cleanup
-      final remaining = await db.select('cleanup_test');
+      final remaining = await db.selectQL('cleanup_test');
       expect(remaining, isEmpty);
 
       // Database should still be functional
-      final newRecord = await db.create('cleanup_test', {'test': 'new'});
+      final newRecord = await db.createQL('cleanup_test', {'test': 'new'});
       expect(newRecord['test'], equals('new'));
     });
   });
@@ -218,7 +218,7 @@ void main() {
       );
 
       try {
-        await db.create('person', {'name': 'Fast'});
+        await db.createQL('person', {'name': 'Fast'});
         stopwatch.stop();
 
         // Should be very fast without isolate startup
