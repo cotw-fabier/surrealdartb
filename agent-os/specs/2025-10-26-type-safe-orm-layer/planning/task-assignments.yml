@@ -1,0 +1,58 @@
+task_assignments:
+  # Phase 1: Foundation & Method Renaming (Week 1)
+  - task_group: "Task Group 1: Database API Method Renaming"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 2: ORM Annotations Definition"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 3: ORM Exception Types"
+    assigned_subagent: "database-engineer"
+
+  # Phase 2: Serialization & Basic CRUD (Week 2)
+  - task_group: "Task Group 4: Serialization Code Generation"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 5: Type-Safe CRUD Implementation"
+    assigned_subagent: "api-engineer"
+
+  # Phase 3: Query Builder Foundation (Week 3)
+  - task_group: "Task Group 6: Query Builder Base Classes"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 7: Database query() Factory Method"
+    assigned_subagent: "api-engineer"
+
+  # Phase 4: Advanced Where Clause DSL with Logical Operators (Week 4)
+  - task_group: "Task Group 8: WhereCondition Class Hierarchy"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 9: Where Builder Class Generation"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 10: Comprehensive Where Clause DSL Integration"
+    assigned_subagent: "api-engineer"
+
+  # Phase 5: Relationship System - Core (Week 5)
+  - task_group: "Task Group 11: Relationship Field Detection and Metadata"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 12: Record Link Relationships (@SurrealRecord)"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 13: Graph Relation & Edge Table Relationships"
+    assigned_subagent: "database-engineer"
+
+  # Phase 6: Advanced Include System with Filtering (Week 6)
+  - task_group: "Task Group 14: IncludeSpec and Include Builder Classes"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 15: Filtered Include SurrealQL Generation"
+    assigned_subagent: "database-engineer"
+
+  # Phase 7: Integration & Documentation (Week 7)
+  - task_group: "Task Group 16: Direct Parameter Query API & End-to-End Testing"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 17: Comprehensive Testing & Documentation"
+    assigned_subagent: "testing-engineer"
