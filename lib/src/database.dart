@@ -2,6 +2,154 @@
 ///
 /// This library provides the main Database class which offers a clean,
 /// Future-based API for interacting with SurrealDB through FFI.
+///
+/// ## Dual Validation Strategy
+///
+/// This SDK implements a dual validation strategy for data integrity:
+///
+/// **Dart-Side Validation (Optional)**:
+/// When a [TableStructure] schema is provided to CRUD operations ([create],
+/// [update]), the data is validated in Dart before being sent to SurrealDB.
+/// This provides:
+/// - Immediate feedback on validation errors
+/// - Field-level error details via [ValidationException]
+/// - Type safety and dimension checks for vector fields
+/// - No database round-trip for invalid data
+///
+/// **SurrealDB Fallback Validation**:
+/// When no [TableStructure] is provided, data passes directly to SurrealDB,
+/// which performs its own validation based on any `DEFINE TABLE` schemas.
+/// SurrealDB errors are returned as [DatabaseException].
+///
+/// ### Choosing a Validation Strategy
+///
+/// **Use Dart-side validation when**:
+/// - You want immediate, detailed validation feedback
+/// - You're working with vector embeddings and need dimension checks
+/// - You want to catch errors before FFI boundary crossing
+/// - You have complex nested schemas to validate
+///
+/// **Skip Dart-side validation when**:
+/// - You're doing simple inserts with no complex validation
+/// - You want maximum performance (skip validation overhead)
+/// - SurrealDB schema validation is sufficient for your use case
+///
+/// ### Example: Dart-Side Validation
+///
+/// ```dart
+/// // Define schema with vector field
+/// final schema = TableStructure('documents', {
+///   'title': FieldDefinition(StringType()),
+///   'embedding': FieldDefinition(
+///     VectorType.f32(1536, normalized: true),
+///   ),
+/// });
+///
+/// // Create vector embedding
+/// final embedding = VectorValue.fromList(List.filled(1536, 0.1));
+///
+/// try {
+///   // Validate before insert
+///   final doc = await db.create(
+///     'documents',
+///     {
+///       'title': 'AI Document',
+///       'embedding': embedding.toJson(),
+///     },
+///     schema: schema, // Dart-side validation enabled
+///   );
+/// } catch (e) {
+///   if (e is ValidationException) {
+///     print('Validation failed on field: ${e.fieldName}');
+///     print('Constraint violated: ${e.constraint}');
+///   }
+/// }
+/// ```
+///
+/// ### Example: SurrealDB Fallback Validation
+///
+/// ```dart
+/// // No schema provided - data passes directly to SurrealDB
+/// try {
+///   final doc = await db.create('documents', {
+///     'title': 'Simple Document',
+///     'content': 'Content here',
+///   });
+///   // SurrealDB validates based on its own schema (if defined)
+/// } catch (e) {
+///   if (e is DatabaseException) {
+///     print('SurrealDB error: ${e.message}');
+///   }
+/// }
+/// ```
+///
+/// ## Vector Data Storage
+///
+/// Vectors can be stored and retrieved seamlessly using existing CRUD operations.
+/// No new FFI functions are required - vectors are serialized to JSON for transport.
+///
+/// ### Storing Vectors
+///
+/// ```dart
+/// // Create vector embedding
+/// final embedding = VectorValue.fromList([0.1, 0.2, 0.3, 0.4]);
+///
+/// // Store via create()
+/// final record = await db.create('embeddings', {
+///   'text': 'Hello world',
+///   'vector': embedding.toJson(), // Serializes to JSON List
+/// });
+/// ```
+///
+/// ### Retrieving Vectors
+///
+/// ```dart
+/// // Get record with vector
+/// final record = await db.get<Map<String, dynamic>>('embeddings:abc');
+///
+/// // Convert JSON back to VectorValue
+/// final vector = VectorValue.fromJson(record!['vector']);
+///
+/// // Use vector operations
+/// print('Dimensions: ${vector.dimensions}');
+/// print('Magnitude: ${vector.magnitude()}');
+/// ```
+///
+/// ### Batch Operations with Vectors
+///
+/// ```dart
+/// // Create multiple vectors
+/// final vectors = [
+///   VectorValue.fromList([1.0, 0.0, 0.0]),
+///   VectorValue.fromList([0.0, 1.0, 0.0]),
+///   VectorValue.fromList([0.0, 0.0, 1.0]),
+/// ];
+///
+/// // Batch insert via query()
+/// await db.set('vec1', vectors[0].toJson());
+/// await db.set('vec2', vectors[1].toJson());
+/// await db.set('vec3', vectors[2].toJson());
+///
+/// await db.query('''
+///   INSERT INTO embeddings [
+///     { name: "x", vec: \$vec1 },
+///     { name: "y", vec: \$vec2 },
+///     { name: "z", vec: \$vec3 }
+///   ]
+/// ''');
+/// ```
+///
+/// ### Updating Vectors
+///
+/// ```dart
+/// // Update existing vector
+/// final newEmbedding = VectorValue.fromList([0.5, 0.6, 0.7, 0.8]);
+///
+/// await db.update('embeddings:abc', {
+///   'vector': newEmbedding.toJson(),
+///   'updated_at': DateTime.now().toIso8601String(),
+/// });
+/// ```
 library;
 
 import 'dart:async';
@@ -14,6 +162,7 @@ import 'exceptions.dart';
 import 'ffi/bindings.dart';
 import 'ffi/native_types.dart';
 import 'response.dart';
+import 'schema/table_structure.dart';
 import 'storage_backend.dart';
 import 'types/credentials.dart';
 import 'types/jwt.dart';
@@ -337,38 +486,76 @@ class Database {
     });
   }
 
-  /// Creates a new record in a table.
+  /// Creates a new record in a table with optional schema validation.
   ///
   /// This method creates a new record with the specified data in the
   /// given table. SurrealDB will automatically generate an ID if not
   /// provided in the data.
   ///
+  /// **Dual Validation Strategy**:
+  ///
+  /// If [schema] is provided, the data is validated in Dart before
+  /// being sent to SurrealDB. This provides immediate feedback and
+  /// detailed error information via [ValidationException].
+  ///
+  /// If [schema] is null, data passes directly to SurrealDB, which
+  /// performs its own validation based on any defined table schemas.
+  ///
   /// Parameters:
   /// - [table] - The table name to create the record in
   /// - [data] - The record data as key-value pairs
+  /// - [schema] - Optional TableStructure for Dart-side validation
   ///
   /// Returns the created record including any auto-generated fields.
   ///
   /// Throws:
   /// - [StateError] if database is closed
+  /// - [ValidationException] if schema validation fails (when schema provided)
   /// - [QueryException] if create operation fails
   /// - [DatabaseException] for other errors
   ///
-  /// Example:
+  /// Example with Dart-side validation:
   /// ```dart
-  /// final person = await db.create('person', {
-  ///   'name': 'Alice',
-  ///   'age': 25,
-  ///   'email': 'alice@example.com',
+  /// // Define schema
+  /// final schema = TableStructure('person', {
+  ///   'name': FieldDefinition(StringType()),
+  ///   'age': FieldDefinition(NumberType(format: NumberFormat.integer)),
   /// });
+  ///
+  /// // Create with validation
+  /// final person = await db.create(
+  ///   'person',
+  ///   {
+  ///     'name': 'Alice',
+  ///     'age': 25,
+  ///     'email': 'alice@example.com',
+  ///   },
+  ///   schema: schema, // Validates before insert
+  /// );
   ///
   /// print('Created person with ID: ${person['id']}');
   /// ```
+  ///
+  /// Example with vector field:
+  /// ```dart
+  /// final embedding = VectorValue.fromList(List.filled(384, 0.1));
+  ///
+  /// final doc = await db.create('documents', {
+  ///   'title': 'AI Document',
+  ///   'embedding': embedding.toJson(),
+  /// });
+  /// ```
   Future<Map<String, dynamic>> create(
     String table,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    TableStructure? schema,
+  }) async {
     _ensureNotClosed();
+
+    // Dart-side validation if schema provided
+    if (schema != null) {
+      schema.validate(data);
+    }
 
     return Future(() {
       final tablePtr = table.toNativeUtf8();
@@ -405,36 +592,71 @@ class Database {
     });
   }
 
-  /// Updates an existing record.
+  /// Updates an existing record with optional schema validation.
   ///
   /// This method updates the record identified by [resource] with the
   /// provided data. The resource should be in the format "table:id".
   ///
+  /// **Dual Validation Strategy**:
+  ///
+  /// If [schema] is provided, the data is validated in Dart before
+  /// being sent to SurrealDB. This provides immediate feedback and
+  /// detailed error information via [ValidationException].
+  ///
+  /// If [schema] is null, data passes directly to SurrealDB, which
+  /// performs its own validation based on any defined table schemas.
+  ///
   /// Parameters:
   /// - [resource] - The record identifier (e.g., "person:john")
   /// - [data] - The update data as key-value pairs
+  /// - [schema] - Optional TableStructure for Dart-side validation
   ///
   /// Returns the updated record.
   ///
   /// Throws:
   /// - [StateError] if database is closed
+  /// - [ValidationException] if schema validation fails (when schema provided)
   /// - [QueryException] if update operation fails
   /// - [DatabaseException] for other errors
   ///
-  /// Example:
+  /// Example with validation:
   /// ```dart
-  /// final updated = await db.update('person:john', {
-  ///   'age': 31,
-  ///   'email': 'john.new@example.com',
+  /// final schema = TableStructure('person', {
+  ///   'age': FieldDefinition(NumberType(format: NumberFormat.integer)),
+  ///   'email': FieldDefinition(StringType(), optional: true),
   /// });
+  ///
+  /// final updated = await db.update(
+  ///   'person:john',
+  ///   {
+  ///     'age': 31,
+  ///     'email': 'john.new@example.com',
+  ///   },
+  ///   schema: schema,
+  /// );
   ///
   /// print('Updated: ${updated['name']}');
   /// ```
+  ///
+  /// Example updating vector:
+  /// ```dart
+  /// final newEmbedding = VectorValue.fromList([0.5, 0.6, 0.7]);
+  ///
+  /// await db.update('embeddings:abc', {
+  ///   'vector': newEmbedding.toJson(),
+  /// });
+  /// ```
   Future<Map<String, dynamic>> update(
     String resource,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    TableStructure? schema,
+  }) async {
     _ensureNotClosed();
+
+    // Dart-side validation if schema provided
+    if (schema != null) {
+      schema.validate(data);
+    }
 
     return Future(() {
       final resourcePtr = resource.toNativeUtf8();
@@ -529,6 +751,15 @@ class Database {
   ///   print('Found: ${person['name']}');
   /// } else {
   ///   print('Person not found');
+  /// }
+  /// ```
+  ///
+  /// Example retrieving vector:
+  /// ```dart
+  /// final record = await db.get<Map<String, dynamic>>('embeddings:abc');
+  /// if (record != null) {
+  ///   final vector = VectorValue.fromJson(record['embedding']);
+  ///   print('Vector dimensions: ${vector.dimensions}');
   /// }
   /// ```
   Future<T?> get<T>(String resource) async {
@@ -879,8 +1110,8 @@ class Database {
 
     return Future(() {
       final functionPtr = function.toNativeUtf8();
-      final argsJson = args != null && args.isNotEmpty 
-          ? jsonEncode(args) 
+      final argsJson = args != null && args.isNotEmpty
+          ? jsonEncode(args)
           : '';
       final argsPtr = argsJson.toNativeUtf8();
 

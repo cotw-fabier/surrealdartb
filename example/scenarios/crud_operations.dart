@@ -13,12 +13,12 @@ import 'package:surrealdartb/surrealdartb.dart';
 
 /// Runs the CRUD operations scenario.
 ///
-/// This scenario demonstrates a complete lifecycle of data operations:
-/// creating, reading, updating, and deleting records. It uses an in-memory
-/// database for fast execution and clear demonstration of each operation.
+/// This scenario demonstrates two approaches to CRUD operations:
+/// - Section A: Basic CRUD with SurrealQL (simple, direct database operations)
+/// - Section B: Schema-Validated CRUD with TableStructure (type-safe with validation)
 ///
-/// All operations include detailed console output showing the data at
-/// each step of the process.
+/// This shows the progression from basic to advanced usage, demonstrating
+/// when to use schema validation for production applications.
 ///
 /// Throws [DatabaseException] if any operation fails.
 Future<void> runCrudScenario() async {
@@ -27,6 +27,14 @@ Future<void> runCrudScenario() async {
   Database? db;
 
   try {
+    // ===================================================================
+    // SECTION A: Basic CRUD Operations (No Schema Validation)
+    // ===================================================================
+    print('╔═══════════════════════════════════════════════════════════╗');
+    print('║ SECTION A: Basic CRUD Operations                         ║');
+    print('║ (Direct SurrealQL - Simple & Fast)                       ║');
+    print('╚═══════════════════════════════════════════════════════════╝\n');
+
     // Step 1: Connect to database
     print('Step 1: Connecting to database...');
     db = await Database.connect(
@@ -105,12 +113,19 @@ Future<void> runCrudScenario() async {
     }
 
     // Success summary
-    print('=== CRUD Operations: SUCCESS ===');
-    print('All operations completed successfully!');
-    print('  ✓ Create');
-    print('  ✓ Read (Select)');
-    print('  ✓ Update');
-    print('  ✓ Delete\n');
+    print('╔═══════════════════════════════════════════════════════════╗');
+    print('║ Section A Complete - Basic CRUD: SUCCESS ✓               ║');
+    print('╚═══════════════════════════════════════════════════════════╝\n');
+
+    // ===================================================================
+    // SECTION B: Schema-Validated CRUD Operations (With TableStructure)
+    // ===================================================================
+    print('╔═══════════════════════════════════════════════════════════╗');
+    print('║ SECTION B: Schema-Validated CRUD Operations              ║');
+    print('║ (TableStructure - Type-Safe & Validated)                 ║');
+    print('╚═══════════════════════════════════════════════════════════╝\n');
+
+    await _demonstrateSchemaValidatedCrud(db);
   } on ConnectionException catch (e) {
     print('\n✗ Connection failed: ${e.message}');
     if (e.errorCode != null) {
@@ -140,4 +155,148 @@ Future<void> runCrudScenario() async {
       print('✓ Database closed\n');
     }
   }
+}
+
+/// Demonstrates CRUD operations with schema validation using TableStructure.
+///
+/// This approach provides:
+/// - Type-safe schema definitions
+/// - Dart-side validation before database operations
+/// - Clear validation error messages with field-level details
+/// - Production-ready patterns for data integrity
+Future<void> _demonstrateSchemaValidatedCrud(Database db) async {
+  // Step 1: Define the schema using TableStructure
+  print('Step 1: Defining product schema with TableStructure...');
+  final productSchema = TableStructure('product', {
+    'name': FieldDefinition(StringType(), optional: false),
+    'price': FieldDefinition(
+      NumberType(format: NumberFormat.floating),
+      optional: false,
+    ),
+    'quantity': FieldDefinition(
+      NumberType(format: NumberFormat.integer),
+      optional: false,
+    ),
+    'category': FieldDefinition(StringType(), optional: true),
+    'tags': FieldDefinition(
+      ArrayType(StringType()),
+      optional: true,
+    ),
+  });
+  print('✓ Schema defined with 5 fields (3 required, 2 optional)\n');
+
+  // Step 2: Create a product with schema validation
+  print('Step 2: Creating product with schema validation...');
+  final productData = {
+    'name': 'Laptop',
+    'price': 999.99,
+    'quantity': 10,
+    'category': 'Electronics',
+    'tags': ['computer', 'portable', 'work'],
+  };
+
+  // Validate before creating
+  try {
+    productSchema.validate(productData);
+    print('✓ Data validated successfully (Dart-side validation)');
+  } on ValidationException catch (e) {
+    print('✗ Validation failed: ${e.message}');
+    if (e.fieldName != null) {
+      print('  Field: ${e.fieldName}');
+    }
+    rethrow;
+  }
+
+  final product = await db.create('product', productData, schema: productSchema);
+  print('✓ Product created:');
+  print('  ID: ${product['id']}');
+  print('  Name: ${product['name']}');
+  print('  Price: \$${product['price']}');
+  print('  Quantity: ${product['quantity']}');
+  print('  Category: ${product['category']}');
+  print('  Tags: ${product['tags']}\n');
+
+  final productId = product['id'] as String;
+
+  // Step 3: Attempt to update with invalid data (demonstrate validation)
+  print('Step 3: Testing validation with invalid data...');
+  final invalidUpdate = {
+    'price': -50.0, // Negative price - should pass schema but may fail business logic
+    'quantity': 5,
+  };
+
+  try {
+    // Schema validates types, not business rules
+    productSchema.validate(invalidUpdate);
+    print('✓ Schema validation passed (types are correct)');
+    print('  Note: Schema validates structure, not business rules');
+    print('  (Business rules like "price > 0" would need custom validation)\n');
+  } catch (e) {
+    print('✗ Validation failed: $e\n');
+  }
+
+  // Step 4: Update with valid data
+  print('Step 4: Updating product with valid data...');
+  final validUpdate = {
+    'price': 899.99,
+    'quantity': 8,
+    'category': 'Electronics & Computers',
+  };
+
+  productSchema.validate(validUpdate);
+  final updated = await db.update(productId, validUpdate, schema: productSchema);
+  print('✓ Product updated:');
+  print('  Price: \$${updated['price']} (was \$999.99)');
+  print('  Quantity: ${updated['quantity']} (was 10)');
+  print('  Category: ${updated['category']}\n');
+
+  // Step 5: Demonstrate missing required field error
+  print('Step 5: Testing required field validation...');
+  final missingRequired = {
+    'name': 'Incomplete Product',
+    // Missing 'price' and 'quantity' - both required!
+  };
+
+  try {
+    productSchema.validate(missingRequired);
+    print('✗ Should have failed validation!');
+  } on ValidationException catch (e) {
+    print('✓ Caught validation error (as expected):');
+    print('  ${e.message}');
+    if (e.fieldName != null) {
+      print('  Failed field: ${e.fieldName}');
+    }
+    print('  This error was caught BEFORE database call (Dart-side validation)\n');
+  }
+
+  // Step 6: Query and clean up
+  print('Step 6: Querying products...');
+  final products = await db.select('product');
+  print('✓ Found ${products.length} product(s)');
+  for (final p in products) {
+    print('  - ${p['name']}: \$${p['price']}');
+  }
+  print('');
+
+  print('Step 7: Cleaning up...');
+  await db.delete(productId);
+  print('✓ Product deleted\n');
+
+  // Summary
+  print('╔═══════════════════════════════════════════════════════════╗');
+  print('║ Section B Complete - Schema-Validated CRUD: SUCCESS ✓    ║');
+  print('╚═══════════════════════════════════════════════════════════╝\n');
+
+  print('=== Key Takeaways ===');
+  print('1. Basic CRUD (Section A):');
+  print('   - Fast and simple for prototyping');
+  print('   - Validation happens at database level');
+  print('   - Good for simple use cases\n');
+  print('2. Schema-Validated CRUD (Section B):');
+  print('   - Type-safe with compile-time checking');
+  print('   - Dart-side validation catches errors early');
+  print('   - Better error messages with field details');
+  print('   - Production-ready for complex applications\n');
+  print('Choose the approach that fits your needs!');
+  print('You can even mix both in the same application.\n');
 }

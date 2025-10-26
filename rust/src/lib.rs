@@ -33,6 +33,8 @@
 /// - Never expose raw Pointer types in public API
 /// - Catch all exceptions in isolate message handlers
 
+use std::sync::Once;
+
 pub mod error;
 pub mod runtime;
 pub mod database;
@@ -51,6 +53,27 @@ pub use query::{
 };
 pub use auth::{db_signin, db_signup, db_authenticate, db_invalidate};
 // pub use live_query::{db_select_live, db_live_poll, db_kill_live};
+
+static INIT_LOGGER: Once = Once::new();
+
+/// Initialize the Rust logger for FFI debugging
+///
+/// This function initializes env_logger to enable logging from Rust code.
+/// Call this once at the start of your application before making any other FFI calls.
+///
+/// Logging can be controlled via the RUST_LOG environment variable:
+/// - RUST_LOG=info  - Show info, warn, and error logs
+/// - RUST_LOG=debug - Show debug, info, warn, and error logs
+/// - RUST_LOG=trace - Show all logs including trace level
+///
+/// # Safety
+/// This function is safe to call multiple times. Only the first call will initialize the logger.
+#[no_mangle]
+pub extern "C" fn init_logger() {
+    INIT_LOGGER.call_once(|| {
+        let _ = env_logger::try_init();
+    });
+}
 
 #[cfg(test)]
 mod tests {

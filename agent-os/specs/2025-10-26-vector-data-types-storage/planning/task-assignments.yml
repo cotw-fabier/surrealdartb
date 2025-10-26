@@ -1,0 +1,18 @@
+task_assignments:
+  - task_group: "Task Group 1: VectorValue Class Foundation"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2: Vector Math & Validation Operations"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3: TableStructure Type System"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 4: TableStructure Validation & Schema Definition"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 5: Database Integration & Dual Validation Strategy"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 6: Test Review & Coverage Completion"
+    assigned_subagent: "testing-engineer"

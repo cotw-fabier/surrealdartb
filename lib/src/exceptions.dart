@@ -373,3 +373,59 @@ class ImportException extends DatabaseException {
     return buffer.toString();
   }
 }
+
+/// Exception thrown when data validation fails.
+///
+/// This exception is thrown by Dart-side validation when data doesn't
+/// conform to a defined TableStructure schema. It provides field-level
+/// error details to help developers fix validation issues.
+///
+/// This is distinct from [DatabaseException] which represents errors
+/// from the SurrealDB database layer.
+///
+/// Example:
+/// ```dart
+/// try {
+///   schema.validate({'title': 'Test'}); // missing required 'content' field
+/// } catch (e) {
+///   if (e is ValidationException) {
+///     print('Validation failed on field: ${e.fieldName}');
+///     print('Constraint: ${e.constraint}');
+///   }
+/// }
+/// ```
+class ValidationException extends DatabaseException {
+  /// Creates a validation exception.
+  ///
+  /// [message] - Human-readable description of the validation failure
+  /// [fieldName] - Optional name of the field that failed validation
+  /// [constraint] - Optional description of the constraint that was violated
+  ValidationException(
+    super.message, {
+    this.fieldName,
+    this.constraint,
+  });
+
+  /// The name of the field that failed validation, if applicable.
+  ///
+  /// This helps developers identify exactly which field in their data
+  /// caused the validation to fail.
+  final String? fieldName;
+
+  /// Description of the constraint that was violated, if applicable.
+  ///
+  /// Examples: 'required', 'dimension_mismatch', 'not_normalized', 'type_mismatch'
+  final String? constraint;
+
+  @override
+  String toString() {
+    final buffer = StringBuffer('ValidationException: $message');
+    if (fieldName != null) {
+      buffer.write(' (field: $fieldName)');
+    }
+    if (constraint != null) {
+      buffer.write(' [constraint: $constraint]');
+    }
+    return buffer.toString();
+  }
+}

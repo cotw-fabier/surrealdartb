@@ -102,7 +102,8 @@ export 'src/exceptions.dart'
         LiveQueryException,
         ParameterException,
         ExportException,
-        ImportException;
+        ImportException,
+        ValidationException;
 export 'src/response.dart' show Response;
 export 'src/storage_backend.dart' show StorageBackend, StorageBackendExt;
 export 'src/types/types.dart'
@@ -120,7 +121,27 @@ export 'src/types/types.dart'
         ScopeCredentials,
         RecordCredentials,
         Notification,
-        NotificationAction;
+        NotificationAction,
+        VectorValue,
+        VectorFormat;
+export 'src/schema/schema.dart'
+    show
+        SurrealType,
+        StringType,
+        NumberType,
+        NumberFormat,
+        BoolType,
+        DatetimeType,
+        DurationType,
+        ArrayType,
+        ObjectType,
+        RecordType,
+        GeometryType,
+        GeometryKind,
+        VectorType,
+        AnyType,
+        FieldDefinition,
+        TableStructure;
 
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)

@@ -247,3 +247,10 @@ typedef NativeDbRun = Pointer<NativeResponse> Function(
 /// Returns the database version string.
 /// Caller must free the returned string.
 typedef NativeDbVersion = Pointer<Utf8> Function(Pointer<NativeDatabase> handle);
+
+/// Type definition for logger initialization function.
+///
+/// Initializes the Rust env_logger for debugging FFI operations.
+/// This function is idempotent and safe to call multiple times.
+/// Should be called before any other FFI operations to enable Rust logging.
+typedef NativeInitLogger = Void Function();

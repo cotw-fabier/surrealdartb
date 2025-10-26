@@ -4,6 +4,7 @@ use surrealdb::Surreal;
 use surrealdb::engine::any::{Any, connect};
 use crate::error::set_last_error;
 use crate::runtime::get_runtime;
+use log::{info, debug, warn, error};
 
 /// Opaque handle for SurrealDB database instance
 ///
@@ -249,25 +250,37 @@ pub extern "C" fn db_use_db(handle: *mut Database, db: *const c_char) -> i32 {
 pub extern "C" fn db_begin(handle: *mut Database) -> i32 {
     match panic::catch_unwind(|| {
         if handle.is_null() {
+            error!("[TRANSACTION] db_begin: Database handle is null");
             set_last_error("Database handle cannot be null");
             return -1;
         }
 
+        info!("[TRANSACTION] db_begin: Starting transaction...");
         let db = unsafe { &mut *handle };
         let runtime = get_runtime();
 
+        debug!("[TRANSACTION] db_begin: About to execute BEGIN TRANSACTION query");
         match runtime.block_on(async {
             db.inner.query("BEGIN TRANSACTION").await
         }) {
-            Ok(_) => 0,
+            Ok(response) => {
+                info!("[TRANSACTION] db_begin: BEGIN TRANSACTION executed successfully");
+                debug!("[TRANSACTION] db_begin: Response: {:?}", response);
+                0
+            }
             Err(e) => {
+                error!("[TRANSACTION] db_begin: BEGIN TRANSACTION failed with error: {}", e);
                 set_last_error(&format!("Failed to begin transaction: {}", e));
                 -1
             }
         }
     }) {
-        Ok(result) => result,
-        Err(_) => {
+        Ok(result) => {
+            info!("[TRANSACTION] db_begin: Returning result: {}", result);
+            result
+        }
+        Err(e) => {
+            error!("[TRANSACTION] db_begin: Panic occurred: {:?}", e);
             set_last_error("Panic occurred in db_begin");
             -1
         }
@@ -300,25 +313,37 @@ pub extern "C" fn db_begin(handle: *mut Database) -> i32 {
 pub extern "C" fn db_commit(handle: *mut Database) -> i32 {
     match panic::catch_unwind(|| {
         if handle.is_null() {
+            error!("[TRANSACTION] db_commit: Database handle is null");
             set_last_error("Database handle cannot be null");
             return -1;
         }
 
+        info!("[TRANSACTION] db_commit: Committing transaction...");
         let db = unsafe { &mut *handle };
         let runtime = get_runtime();
 
+        debug!("[TRANSACTION] db_commit: About to execute COMMIT TRANSACTION query");
         match runtime.block_on(async {
             db.inner.query("COMMIT TRANSACTION").await
         }) {
-            Ok(_) => 0,
+            Ok(response) => {
+                info!("[TRANSACTION] db_commit: COMMIT TRANSACTION executed successfully");
+                debug!("[TRANSACTION] db_commit: Response: {:?}", response);
+                0
+            }
             Err(e) => {
+                error!("[TRANSACTION] db_commit: COMMIT TRANSACTION failed with error: {}", e);
                 set_last_error(&format!("Failed to commit transaction: {}", e));
                 -1
             }
         }
     }) {
-        Ok(result) => result,
-        Err(_) => {
+        Ok(result) => {
+            info!("[TRANSACTION] db_commit: Returning result: {}", result);
+            result
+        }
+        Err(e) => {
+            error!("[TRANSACTION] db_commit: Panic occurred: {:?}", e);
             set_last_error("Panic occurred in db_commit");
             -1
         }
@@ -351,25 +376,42 @@ pub extern "C" fn db_commit(handle: *mut Database) -> i32 {
 pub extern "C" fn db_rollback(handle: *mut Database) -> i32 {
     match panic::catch_unwind(|| {
         if handle.is_null() {
+            error!("[TRANSACTION] db_rollback: Database handle is null");
             set_last_error("Database handle cannot be null");
             return -1;
         }
 
+        info!("[TRANSACTION] db_rollback: Rolling back transaction...");
         let db = unsafe { &mut *handle };
         let runtime = get_runtime();
 
+        debug!("[TRANSACTION] db_rollback: About to execute CANCEL TRANSACTION query");
         match runtime.block_on(async {
-            db.inner.query("CANCEL TRANSACTION").await
+            let result = db.inner.query("CANCEL TRANSACTION").await;
+            debug!("[TRANSACTION] db_rollback: CANCEL TRANSACTION query returned: {:?}", result);
+            result
         }) {
-            Ok(_) => 0,
+            Ok(response) => {
+                info!("[TRANSACTION] db_rollback: CANCEL TRANSACTION executed successfully");
+                debug!("[TRANSACTION] db_rollback: Response details: {:?}", response);
+
+                // Log additional information to help debug if changes are actually rolled back
+                info!("[TRANSACTION] db_rollback: Transaction should now be rolled back");
+                0
+            }
             Err(e) => {
+                error!("[TRANSACTION] db_rollback: CANCEL TRANSACTION failed with error: {}", e);
                 set_last_error(&format!("Failed to rollback transaction: {}", e));
                 -1
             }
         }
     }) {
-        Ok(result) => result,
-        Err(_) => {
+        Ok(result) => {
+            info!("[TRANSACTION] db_rollback: Returning result: {}", result);
+            result
+        }
+        Err(e) => {
+            error!("[TRANSACTION] db_rollback: Panic occurred: {:?}", e);
             set_last_error("Panic occurred in db_rollback");
             -1
         }

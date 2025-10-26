@@ -59,6 +59,28 @@ DynamicLibrary _loadNativeLibrary() {
 }
 
 //
+// Logging Operations
+//
+
+/// Initializes the Rust logger for FFI debugging.
+///
+/// This function initializes env_logger to enable logging from Rust code.
+/// Call this once at the start of your application before making any other
+/// FFI calls to enable Rust-level logging output.
+///
+/// Logging can be controlled via the RUST_LOG environment variable:
+/// - RUST_LOG=error - Only errors
+/// - RUST_LOG=warn  - Warnings and errors
+/// - RUST_LOG=info  - Info, warnings, and errors (recommended for debugging)
+/// - RUST_LOG=debug - Debug plus above (includes detailed response data)
+/// - RUST_LOG=trace - All logs including trace level
+///
+/// This function is idempotent and safe to call multiple times. Only the
+/// first call will initialize the logger.
+@Native<NativeInitLogger>(symbol: 'init_logger', assetId: 'package:surrealdartb/surrealdartb_bindings')
+external void initLogger();
+
+//
 // Database Lifecycle Operations
 //
 

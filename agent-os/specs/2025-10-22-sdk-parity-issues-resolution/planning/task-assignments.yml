@@ -1,0 +1,54 @@
+task_assignments:
+  - task_group: "Task Group 1.1: Add Instrumentation and Logging"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 1.2: Backend Testing and Comparison"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 1.3: Root Cause Analysis"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 1.4: Implement Rollback Fix"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.1: Rust FFI Function for Insert"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.2: Dart FFI Bindings for Insert"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.3: Dart Wrapper Methods for Insert"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 2.4: Insert Operations Testing"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3.1: Rust FFI Functions for Upsert"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3.2: Dart FFI Bindings for Upsert"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3.3: Dart Wrapper Methods for Upsert"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 3.4: Upsert Operations Testing"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.1: Parameter Test Type Casting Fixes"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.2: Integration Test Type Casting Fixes"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4.3: Comprehensive Type Consistency Verification"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 5.1: Comprehensive Test Suite Verification"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 5.2: Memory Leak and Stability Testing"
+    assigned_subagent: "testing-engineer"
+
+  - task_group: "Task Group 5.3: Documentation Updates"
+    assigned_subagent: "api-engineer"
