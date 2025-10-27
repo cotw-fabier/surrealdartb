@@ -124,10 +124,16 @@ class TableStructure {
   /// Validates data against the table schema.
   ///
   /// Checks that:
-  /// - All required fields are present
+  /// - All required fields are present (unless [partial] is true)
   /// - Optional fields (if present) conform to their types
   /// - Vector fields have correct dimensions and normalization
   /// - Nested objects conform to their schemas
+  ///
+  /// Parameters:
+  /// - [data] - The data to validate
+  /// - [partial] - If true, only validates fields present in the data
+  ///   (default: true). Set to false to require all required fields.
+  ///   Use partial: true for UPDATE operations, partial: false for CREATE.
   ///
   /// Throws [ValidationException] if validation fails, with field-level details.
   ///
@@ -138,25 +144,25 @@ class TableStructure {
   ///   'age': FieldDefinition(NumberType(format: NumberFormat.integer)),
   /// });
   ///
-  /// // Valid data
-  /// schema.validate({'name': 'Alice', 'age': 30}); // OK
+  /// // Partial validation (default) - OK for updates
+  /// schema.validate({'age': 31}); // OK - only validates present fields
   ///
-  /// // Invalid data
+  /// // Full validation - for creates
   /// try {
-  ///   schema.validate({'name': 'Bob'}); // Missing required 'age'
+  ///   schema.validate({'name': 'Bob'}, partial: false); // Missing required 'age'
   /// } catch (e) {
   ///   print(e); // ValidationException: Required field 'age' is missing
   /// }
   /// ```
-  void validate(Map<String, dynamic> data) {
+  void validate(Map<String, dynamic> data, {bool partial = true}) {
     // Check all fields
     for (final entry in fields.entries) {
       final fieldName = entry.key;
       final fieldDef = entry.value;
       final value = data[fieldName];
 
-      // Check required fields
-      if (!fieldDef.optional && value == null) {
+      // Check required fields (only if not partial validation)
+      if (!partial && !fieldDef.optional && value == null) {
         throw ValidationException(
           "Required field '$fieldName' is missing",
           fieldName: fieldName,

@@ -655,8 +655,9 @@ class Database {
     _ensureNotClosed();
 
     // Dart-side validation if schema provided
+    // For CREATE operations, we require all fields (partial: false)
     if (schema != null) {
-      schema.validate(data);
+      schema.validate(data, partial: false);
     }
 
     return Future(() {
@@ -762,6 +763,8 @@ class Database {
     _ensureNotClosed();
 
     // Dart-side validation if schema provided
+    // For UPDATE operations, we use partial validation (default)
+    // This allows updating only specific fields without requiring all fields
     if (schema != null) {
       schema.validate(data);
     }

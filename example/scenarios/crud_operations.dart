@@ -243,7 +243,10 @@ Future<void> _demonstrateSchemaValidatedCrud(Database db) async {
     'category': 'Electronics & Computers',
   };
 
-  productSchema.validate(validUpdate);
+  // Note: UPDATE operations use partial validation automatically.
+  // This means we only need to provide the fields we want to update,
+  // not all required fields. The schema validates the types of the
+  // fields being updated, ensuring data integrity.
   final updated = await db.updateQL(productId, validUpdate, schema: productSchema);
   print('✓ Product updated:');
   print('  Price: \$${updated['price']} (was \$999.99)');
