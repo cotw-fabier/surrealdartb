@@ -11,6 +11,7 @@ targets:
         generate_for:
           - lib/**/*.dart
           - test/**/*.dart
+          - example/**/*.dart
         options:
           # Generate part files with .surreal.dart extension
           # following json_serializable pattern

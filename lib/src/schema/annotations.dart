@@ -204,6 +204,21 @@ class SurrealField {
   /// Generates: `DEFINE INDEX idx_email ON users FIELDS email`
   final bool indexed;
 
+  /// Whether this field is optional (can be omitted).
+  ///
+  /// When true, the field can be omitted from inserts/updates and will use
+  /// the [defaultValue] if specified. When false, the field is required.
+  ///
+  /// Note: This is typically inferred from the Dart type (nullable vs non-nullable),
+  /// but can be explicitly set if needed.
+  ///
+  /// Example:
+  /// ```dart
+  /// @SurrealField(type: StringType(), optional: true)
+  /// String? bio;
+  /// ```
+  final bool optional;
+
   /// Vector dimensions for vector type fields.
   ///
   /// This parameter is required when [type] is VectorType. It specifies
@@ -229,6 +244,7 @@ class SurrealField {
   /// should be specified with the same dimension count.
   const SurrealField({
     required this.type,
+    this.optional = false,
     this.defaultValue,
     this.assertClause,
     this.indexed = false,

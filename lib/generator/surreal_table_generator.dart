@@ -21,9 +21,10 @@ import 'relationship_code_generator.dart';
 /// Builder factory function for build_runner integration.
 ///
 /// This function is called by build_runner to create instances of the
-/// SurrealTableGenerator.
+/// SurrealTableGenerator. Uses PartBuilder with custom extension to generate
+/// .surreal.dart files instead of the default .g.part convention.
 Builder surrealTableBuilder(BuilderOptions options) =>
-    SharedPartBuilder([SurrealTableGenerator()], 'surreal_table');
+    PartBuilder([SurrealTableGenerator()], '.surreal.dart');
 
 /// Generator for creating TableDefinition classes from @SurrealTable annotations.
 ///

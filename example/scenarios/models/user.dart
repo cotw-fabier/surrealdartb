@@ -12,6 +12,8 @@ import 'package:surrealdartb/surrealdartb.dart';
 import 'post.dart';
 import 'profile.dart';
 
+part 'user.surreal.dart';
+
 /// User model with complete ORM annotations.
 ///
 /// After defining this model, run:

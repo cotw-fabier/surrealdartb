@@ -158,6 +158,8 @@ export 'src/schema/ddl_generator.dart' show DdlGenerator;
 export 'src/schema/migration_engine.dart' show MigrationEngine;
 export 'src/schema/migration_history.dart'
     show MigrationHistory, MigrationRecord;
+export 'src/schema/annotations.dart'
+    show SurrealTable, SurrealField, JsonField;
 export 'src/schema/orm_annotations.dart'
     show
         SurrealRecord,

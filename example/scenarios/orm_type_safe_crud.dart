@@ -275,14 +275,25 @@ Future<void> runOrmTypeSafeCrudScenario() async {
     print('        )');
     print('        .execute()');
     print('');
+    print('Generated SurrealQL (uses correlated subquery):');
+    print('  SELECT *,');
+    print('    (SELECT * FROM posts');
+    print('     WHERE author = \$parent.id AND status = \'published\'');
+    print('     ORDER BY createdAt DESC) AS posts');
+    print('  FROM users WHERE name = \'Alice Johnson\'');
+    print('');
     final filteredInclude = await db.queryQL(
-      'SELECT *, posts.* FROM users WHERE name = \'Alice Johnson\' '
-      'FETCH posts WHERE status = \'published\' ORDER BY createdAt DESC',
+      'SELECT *, '
+      '(SELECT * FROM posts WHERE author = \$parent.id AND status = \'published\' '
+      'ORDER BY createdAt DESC LIMIT 5) AS posts '
+      'FROM users WHERE name = \'Alice Johnson\'',
     );
     final usersWithPosts = filteredInclude.getResults();
     print('✓ Users with published posts:');
     for (final u in usersWithPosts) {
-      print('  - ${u['name']}: Has posts field included');
+      final posts = u['posts'];
+      final postCount = posts is List ? posts.length : 0;
+      print('  - ${u['name']}: $postCount published post(s) included');
     }
     print('');
 

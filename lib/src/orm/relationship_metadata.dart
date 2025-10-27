@@ -102,12 +102,14 @@ final class RecordLinkMetadata extends RelationshipMetadata {
   /// [isList] - Whether this is a list relationship
   /// [isOptional] - Whether the field is nullable
   /// [tableName] - Optional explicit table name (overrides inferred name)
+  /// [foreignKey] - Optional explicit foreign key field in target table
   const RecordLinkMetadata({
     required super.fieldName,
     required super.targetType,
     required super.isList,
     required super.isOptional,
     this.tableName,
+    this.foreignKey,
   });
 
   /// Optional explicit target table name.
@@ -121,6 +123,23 @@ final class RecordLinkMetadata extends RelationshipMetadata {
   /// final Profile profile;
   /// ```
   final String? tableName;
+
+  /// Optional explicit foreign key field name in the target table.
+  ///
+  /// When null, the foreign key is inferred using naming conventions.
+  /// When specified, uses this exact field name in generated subqueries.
+  ///
+  /// **Important:** This is the field name in the **target** table that
+  /// references the parent record.
+  ///
+  /// Example:
+  /// ```dart
+  /// @SurrealRecord(foreignKey: 'user_id')
+  /// final List<Post> posts;
+  /// ```
+  ///
+  /// Generates: `WHERE user_id = $parent.id` in subqueries
+  final String? foreignKey;
 
   /// Gets the effective table name for this relationship.
   ///

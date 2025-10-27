@@ -3,10 +3,15 @@
 /// These tests verify:
 /// - Single record link functionality
 /// - List record link functionality
-/// - FETCH clause generation for record links
+/// - Simple FETCH clause generation (no filters)
+/// - Subquery generation for filtered includes (WHERE/ORDER BY/LIMIT)
 /// - Deserialization of related objects
 /// - Serialization of record links to IDs
 /// - Auto-include behavior for non-optional relationships
+/// - Mixed includes (subquery + simple FETCH)
+///
+/// **Note:** Filtered includes now use correlated subqueries with `$parent.id`
+/// instead of invalid `FETCH ... WHERE` syntax.
 ///
 /// Total tests: 8 focused tests covering record link relationship behaviors
 library;
@@ -63,8 +68,8 @@ void main() {
       expect(clause, equals('FETCH posts'));
     });
 
-    // Test 3: FETCH clause with WHERE filtering
-    test('Test 3: Generate FETCH clause with WHERE condition', () async {
+    // Test 3: Subquery with WHERE filtering
+    test('Test 3: Generate subquery with WHERE condition', () async {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final whereCondition = EqualsCondition('status', 'published');
       final spec = IncludeSpec('posts', where: whereCondition);
@@ -79,17 +84,19 @@ void main() {
       try {
         final clause = generateFetchClause(metadata, spec: spec, db: db);
 
-        // Verify FETCH with WHERE clause
-        expect(clause, contains('FETCH posts'));
+        // Verify subquery with $parent correlation
+        expect(clause, contains('(SELECT * FROM'));
         expect(clause, contains('WHERE'));
+        expect(clause, contains('author = \$parent.id'));
         expect(clause, contains("status = 'published'"));
+        expect(clause, endsWith(') AS posts'));
       } finally {
         await db.close();
       }
     });
 
-    // Test 4: FETCH clause with LIMIT and ORDER BY
-    test('Test 4: Generate FETCH clause with LIMIT and ORDER BY', () {
+    // Test 4: Subquery with LIMIT and ORDER BY
+    test('Test 4: Generate subquery with LIMIT and ORDER BY', () {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final spec = IncludeSpec(
         'posts',
@@ -100,12 +107,16 @@ void main() {
 
       final clause = generateFetchClause(metadata, spec: spec);
 
-      // Verify FETCH with ORDER BY and LIMIT
-      expect(clause, equals('FETCH posts ORDER BY createdAt DESC LIMIT 10'));
+      // Verify subquery with ORDER BY and LIMIT and $parent correlation
+      expect(clause, contains('(SELECT * FROM'));
+      expect(clause, contains('author = \$parent.id'));
+      expect(clause, contains('ORDER BY createdAt DESC'));
+      expect(clause, contains('LIMIT 10'));
+      expect(clause, endsWith(') AS posts'));
     });
 
-    // Test 5: FETCH clause with all options
-    test('Test 5: Generate FETCH clause with WHERE, ORDER BY, and LIMIT', () async {
+    // Test 5: Subquery with all options
+    test('Test 5: Generate subquery with WHERE, ORDER BY, and LIMIT', () async {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final whereCondition =
           EqualsCondition('status', 'published') & GreaterThanCondition('views', 100);
@@ -126,11 +137,13 @@ void main() {
       try {
         final clause = generateFetchClause(metadata, spec: spec, db: db);
 
-        // Verify complete FETCH clause
-        expect(clause, contains('FETCH posts'));
+        // Verify complete subquery with $parent correlation
+        expect(clause, contains('(SELECT * FROM'));
         expect(clause, contains('WHERE'));
+        expect(clause, contains('author = \$parent.id'));
         expect(clause, contains('ORDER BY views DESC'));
         expect(clause, contains('LIMIT 5'));
+        expect(clause, endsWith(') AS posts'));
       } finally {
         await db.close();
       }
@@ -147,11 +160,11 @@ void main() {
       expect(autoIncludes.length, equals(2));
     });
 
-    // Test 7: Build multiple FETCH clauses
-    test('Test 7: Build multiple FETCH clauses from IncludeSpec list', () async {
+    // Test 7: Build mixed includes (subquery + simple FETCH)
+    test('Test 7: Build multiple includes with mixed filtering', () async {
       final specs = [
-        IncludeSpec('posts', limit: 10),
-        IncludeSpec('profile'),
+        IncludeSpec('posts', limit: 10), // Triggers subquery
+        IncludeSpec('profile'), // Simple FETCH
       ];
 
       final db = await Database.connect(
@@ -163,9 +176,10 @@ void main() {
       try {
         final clause = buildIncludeClauses(specs, testRelationships, db: db);
 
-        // Verify multiple FETCH clauses are comma-separated
-        expect(clause, contains('FETCH posts LIMIT 10'));
-        expect(clause, contains('FETCH profile'));
+        // Verify mixed includes are comma-separated
+        expect(clause, contains('(SELECT * FROM')); // posts as subquery
+        expect(clause, contains('LIMIT 10'));
+        expect(clause, contains('FETCH profile')); // profile as simple FETCH
         expect(clause, contains(','));
       } finally {
         await db.close();

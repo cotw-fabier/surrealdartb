@@ -1,0 +1,11 @@
+# Build configuration for example app
+#
+# Explicitly enables the surreal_table_builder from the parent package
+
+targets:
+  $default:
+    builders:
+      surrealdartb|surreal_table_builder:
+        enabled: true
+        generate_for:
+          - scenarios/**/*.dart

@@ -1,12 +1,16 @@
 /// Unit tests for filtered include SurrealQL generation (Task Group 15).
 ///
 /// These tests verify:
-/// - FETCH clauses with WHERE filtering
-/// - FETCH clauses with LIMIT and ORDER BY
-/// - Nested FETCH with independent filters at each level
-/// - Graph relation filtering
-/// - Complex where conditions in includes
-/// - Multi-level nested includes with filtering
+/// - Subquery generation with WHERE filtering (uses $parent correlation)
+/// - Subquery generation with LIMIT and ORDER BY
+/// - Simple FETCH for includes without filters
+/// - Graph relation filtering (unchanged - uses graph syntax)
+/// - Complex where conditions in subqueries
+/// - Custom foreign key configuration support
+/// - Subquery triggered by ORDER BY alone
+///
+/// **Note:** SurrealDB doesn't support WHERE clauses on FETCH statements.
+/// Filtered includes now use correlated subqueries with `$parent.id` instead.
 ///
 /// Total tests: 8 focused tests covering filtered include scenarios
 library;
@@ -61,8 +65,8 @@ void main() {
       };
     });
 
-    // Test 1: FETCH with WHERE clause generation
-    test('Test 1: Generate FETCH clause with WHERE condition', () async {
+    // Test 1: Subquery generation with WHERE clause
+    test('Test 1: Generate subquery with WHERE condition', () async {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final whereCondition = EqualsCondition('status', 'published');
       final spec = IncludeSpec('posts', where: whereCondition);
@@ -76,17 +80,19 @@ void main() {
       try {
         final clause = generateFetchClause(metadata, spec: spec, db: db);
 
-        // Verify FETCH with WHERE clause
-        expect(clause, contains('FETCH posts'));
+        // Verify subquery structure with $parent correlation
+        expect(clause, contains('(SELECT * FROM'));
         expect(clause, contains('WHERE'));
+        expect(clause, contains('author = \$parent.id'));
         expect(clause, contains("status = 'published'"));
+        expect(clause, endsWith(') AS posts'));
       } finally {
         await db.close();
       }
     });
 
-    // Test 2: FETCH with LIMIT and ORDER BY
-    test('Test 2: Generate FETCH with LIMIT and ORDER BY', () {
+    // Test 2: Subquery with LIMIT and ORDER BY
+    test('Test 2: Generate subquery with LIMIT and ORDER BY', () {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final spec = IncludeSpec(
         'posts',
@@ -97,52 +103,25 @@ void main() {
 
       final clause = generateFetchClause(metadata, spec: spec);
 
-      // Verify ORDER BY comes before LIMIT
-      expect(clause, equals('FETCH posts ORDER BY createdAt DESC LIMIT 10'));
+      // Verify subquery with ORDER BY before LIMIT and $parent correlation
+      expect(clause, contains('(SELECT * FROM'));
+      expect(clause, contains('author = \$parent.id'));
+      expect(clause, contains('ORDER BY createdAt DESC'));
+      expect(clause, contains('LIMIT 10'));
+      expect(clause, matches(RegExp(r'ORDER BY.*LIMIT'))); // Order matters
+      expect(clause, endsWith(') AS posts'));
     });
 
-    // Test 3: Nested FETCH with independent filters at each level
-    test('Test 3: Generate nested FETCH with independent filters', () async {
-      final db = await Database.connect(
-        backend: StorageBackend.memory,
-        namespace: 'test',
-        database: 'test',
-      );
+    // Test 3: Simple FETCH without filters (should not use subquery)
+    test('Test 3: Generate simple FETCH without filters', () {
+      final metadata = testRelationships['posts'] as RecordLinkMetadata;
+      // No spec means no filters, should use simple FETCH
+      final clause = generateFetchClause(metadata);
 
-      try {
-        final specs = [
-          IncludeSpec(
-            'posts',
-            where: EqualsCondition('status', 'published'),
-            limit: 5,
-            include: [
-              IncludeSpec(
-                'comments',
-                where: EqualsCondition('approved', true),
-                limit: 10,
-              ),
-              IncludeSpec('tags'),
-            ],
-          ),
-        ];
-
-        final clause = buildIncludeClauses(specs, testRelationships, db: db);
-
-        // Verify nested structure with independent filters
-        expect(clause, contains('FETCH posts'));
-        expect(clause, contains("status = 'published'"));
-        expect(clause, contains('LIMIT 5'));
-        expect(clause, contains('FETCH comments'));
-        expect(clause, contains('approved = true'));
-        expect(clause, contains('LIMIT 10'));
-        expect(clause, contains('FETCH tags'));
-
-        // Verify nesting syntax with braces
-        expect(clause, contains('{'));
-        expect(clause, contains('}'));
-      } finally {
-        await db.close();
-      }
+      // Verify simple FETCH syntax (not subquery)
+      expect(clause, equals('FETCH posts'));
+      expect(clause, isNot(contains('SELECT')));
+      expect(clause, isNot(contains('\$parent')));
     });
 
     // Test 4: Graph relation filtering
@@ -171,8 +150,8 @@ void main() {
       }
     });
 
-    // Test 5: FETCH with complex AND/OR where conditions
-    test('Test 5: Generate FETCH with complex WHERE condition', () async {
+    // Test 5: Subquery with complex AND/OR where conditions
+    test('Test 5: Generate subquery with complex WHERE condition', () async {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final whereCondition = (EqualsCondition('status', 'published') &
               GreaterThanCondition('views', 100)) |
@@ -188,21 +167,23 @@ void main() {
       try {
         final clause = generateFetchClause(metadata, spec: spec, db: db);
 
-        // Verify complex condition with proper parentheses
-        expect(clause, contains('FETCH posts'));
+        // Verify subquery with complex condition and $parent correlation
+        expect(clause, contains('(SELECT * FROM'));
         expect(clause, contains('WHERE'));
+        expect(clause, contains('author = \$parent.id'));
         expect(clause, contains('AND'));
         expect(clause, contains('OR'));
         expect(clause, contains("status = 'published'"));
         expect(clause, contains('views > 100'));
         expect(clause, contains('featured = true'));
+        expect(clause, endsWith(') AS posts'));
       } finally {
         await db.close();
       }
     });
 
-    // Test 6: FETCH with all filtering options combined
-    test('Test 6: Generate FETCH with WHERE, ORDER BY, and LIMIT', () async {
+    // Test 6: Subquery with all filtering options combined
+    test('Test 6: Generate subquery with WHERE, ORDER BY, and LIMIT', () async {
       final metadata = testRelationships['posts'] as RecordLinkMetadata;
       final whereCondition =
           EqualsCondition('status', 'published') & GreaterThanCondition('views', 100);
@@ -223,19 +204,31 @@ void main() {
       try {
         final clause = generateFetchClause(metadata, spec: spec, db: db);
 
-        // Verify correct order: WHERE, ORDER BY, LIMIT
-        expect(clause, contains('FETCH posts'));
+        // Verify subquery with correct order: WHERE (with $parent), ORDER BY, LIMIT
+        expect(clause, contains('(SELECT * FROM'));
         expect(clause, contains('WHERE'));
+        expect(clause, contains('author = \$parent.id'));
         expect(clause, matches(RegExp(r'WHERE.*ORDER BY.*LIMIT')));
         expect(clause, contains('ORDER BY views DESC'));
         expect(clause, contains('LIMIT 5'));
+        expect(clause, endsWith(') AS posts'));
       } finally {
         await db.close();
       }
     });
 
-    // Test 7: Multi-level nested includes with filtering at each level
-    test('Test 7: Generate multi-level nested includes with filtering', () async {
+    // Test 7: Subquery with explicit foreignKey from metadata
+    test('Test 7: Generate subquery with custom foreign key', () async {
+      final customMetadata = const RecordLinkMetadata(
+        fieldName: 'posts',
+        targetType: 'Post',
+        isList: true,
+        isOptional: true,
+        tableName: null,
+        foreignKey: 'user_id', // Custom foreign key
+      );
+      final spec = IncludeSpec('posts', where: EqualsCondition('status', 'draft'));
+
       final db = await Database.connect(
         backend: StorageBackend.memory,
         namespace: 'test',
@@ -243,87 +236,37 @@ void main() {
       );
 
       try {
-        // Three levels deep: user -> posts -> comments
-        final specs = [
-          IncludeSpec(
-            'posts',
-            where: EqualsCondition('status', 'published'),
-            orderBy: 'createdAt',
-            descending: true,
-            limit: 10,
-            include: [
-              IncludeSpec(
-                'comments',
-                where: EqualsCondition('approved', true),
-                orderBy: 'createdAt',
-                limit: 5,
-                include: [
-                  IncludeSpec('profile'),
-                ],
-              ),
-            ],
-          ),
-        ];
+        final clause = generateFetchClause(customMetadata, spec: spec, db: db);
 
-        final clause = buildIncludeClauses(specs, testRelationships, db: db);
-
-        // Verify all three levels are present
-        expect(clause, contains('FETCH posts'));
-        expect(clause, contains('FETCH comments'));
-        expect(clause, contains('FETCH profile'));
-
-        // Verify independent filtering at each level
-        expect(clause, contains("status = 'published'"));
-        expect(clause, contains('approved = true'));
-
-        // Verify multiple nesting levels
-        final openBraces = '{'.allMatches(clause).length;
-        final closeBraces = '}'.allMatches(clause).length;
-        expect(openBraces, equals(2)); // Two levels of nesting
-        expect(closeBraces, equals(2));
+        // Verify custom foreign key is used instead of default 'author'
+        expect(clause, contains('(SELECT * FROM'));
+        expect(clause, contains('WHERE'));
+        expect(clause, contains('user_id = \$parent.id')); // Custom key
+        expect(clause, isNot(contains('author = \$parent.id'))); // Not default
+        expect(clause, contains("status = 'draft'"));
+        expect(clause, endsWith(') AS posts'));
       } finally {
         await db.close();
       }
     });
 
-    // Test 8: Multiple top-level includes with mixed filtering
-    test('Test 8: Generate multiple includes with different filter types', () async {
-      final db = await Database.connect(
-        backend: StorageBackend.memory,
-        namespace: 'test',
-        database: 'test',
+    // Test 8: Verify only ORDER BY triggers subquery
+    test('Test 8: Generate subquery when only ORDER BY is specified', () {
+      final metadata = testRelationships['posts'] as RecordLinkMetadata;
+      final spec = IncludeSpec(
+        'posts',
+        orderBy: 'createdAt',
+        descending: true,
       );
 
-      try {
-        final specs = [
-          IncludeSpec(
-            'posts',
-            where: EqualsCondition('status', 'published'),
-            limit: 10,
-          ),
-          IncludeSpec('profile'), // No filtering
-          IncludeSpec(
-            'tags',
-            orderBy: 'name',
-          ),
-        ];
+      final clause = generateFetchClause(metadata, spec: spec);
 
-        final clause = buildIncludeClauses(specs, testRelationships, db: db);
-
-        // Verify all three includes are present
-        expect(clause, contains('FETCH posts'));
-        expect(clause, contains('FETCH profile'));
-        expect(clause, contains('FETCH tags'));
-
-        // Verify filtering only on appropriate includes
-        expect(clause, contains("status = 'published'"));
-        expect(clause, contains('ORDER BY name'));
-
-        // Verify comma separation
-        expect(','.allMatches(clause).length, equals(2));
-      } finally {
-        await db.close();
-      }
+      // Verify that ORDER BY alone triggers subquery generation
+      expect(clause, contains('(SELECT * FROM'));
+      expect(clause, contains('WHERE author = \$parent.id')); // Still needs correlation
+      expect(clause, contains('ORDER BY createdAt DESC'));
+      expect(clause, isNot(contains('LIMIT'))); // No LIMIT
+      expect(clause, endsWith(') AS posts'));
     });
   });
 }

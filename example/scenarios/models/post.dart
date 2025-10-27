@@ -11,6 +11,8 @@ import 'package:surrealdartb/surrealdartb.dart';
 
 import 'user.dart';
 
+part 'post.surreal.dart';
+
 /// Post model with ORM annotations.
 @SurrealTable('posts')
 class Post {

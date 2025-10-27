@@ -1,0 +1,16 @@
+name: surrealdartb_example
+description: Examples demonstrating SurrealDB Dart FFI bindings
+version: 1.0.0
+publish_to: none  # Not published to pub.dev
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  # Reference the parent package
+  surrealdartb:
+    path: ../
+
+dev_dependencies:
+  build_runner: ^2.4.0
+  lints: ^6.0.0

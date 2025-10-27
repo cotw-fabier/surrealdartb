@@ -5,28 +5,29 @@
 ///
 /// ## Features
 ///
-/// - Generate FETCH clauses for record link relationships
+/// - Generate FETCH clauses for simple record link relationships
+/// - Generate correlated subqueries for filtered relationships (with WHERE, ORDER BY, or LIMIT)
 /// - Generate graph traversal syntax for graph relations
-/// - Support WHERE clauses on included relationships
+/// - Support WHERE clauses on included relationships via subqueries
 /// - Support LIMIT and ORDER BY on included relationships
 /// - Support nested includes with independent filtering at each level
 ///
 /// ## Usage
 ///
 /// ```dart
-/// // Generate simple FETCH clause
+/// // Generate simple FETCH clause (no filtering)
 /// final clause = generateFetchClause(metadata);
 /// // Returns: "FETCH posts"
 ///
-/// // Generate FETCH with filtering
+/// // Generate subquery with filtering
 /// final spec = IncludeSpec('posts',
 ///   where: EqualsCondition('status', 'published'),
 ///   limit: 10,
 ///   orderBy: 'createdAt',
 ///   descending: true,
 /// );
-/// final clause = generateFetchClause(metadata, spec: spec);
-/// // Returns: "FETCH posts WHERE status = 'published' ORDER BY createdAt DESC LIMIT 10"
+/// final clause = generateFetchClause(metadata, spec: spec, db: db);
+/// // Returns: "(SELECT * FROM posts WHERE author = $parent.id AND status = 'published' ORDER BY createdAt DESC LIMIT 10) AS posts"
 /// ```
 library;
 
@@ -36,12 +37,16 @@ import 'relationship_metadata.dart';
 import 'where_condition.dart';
 import '../schema/orm_annotations.dart';
 
-/// Generates a FETCH clause for a record link relationship.
+/// Generates a FETCH clause or subquery for a record link relationship.
 ///
-/// This function creates a SurrealQL FETCH clause that can optionally include
-/// filtering, sorting, and limiting of the related records.
+/// This function creates either a simple FETCH clause or a correlated subquery
+/// depending on whether filtering, sorting, or limiting is needed.
 ///
-/// ## Basic FETCH
+/// **Strategy:**
+/// - Simple includes (no filters) → FETCH clause
+/// - Filtered includes (WHERE/ORDER BY/LIMIT) → Correlated subquery with $parent
+///
+/// ## Basic FETCH (no filtering)
 ///
 /// ```dart
 /// final metadata = RecordLinkMetadata(
@@ -54,17 +59,17 @@ import '../schema/orm_annotations.dart';
 /// // Returns: "FETCH posts"
 /// ```
 ///
-/// ## FETCH with WHERE clause
+/// ## Subquery with WHERE clause
 ///
 /// ```dart
 /// final spec = IncludeSpec('posts',
 ///   where: EqualsCondition('status', 'published'),
 /// );
 /// final clause = generateFetchClause(metadata, spec: spec, db: database);
-/// // Returns: "FETCH posts WHERE status = 'published'"
+/// // Returns: "(SELECT * FROM posts WHERE author = $parent.id AND status = 'published') AS posts"
 /// ```
 ///
-/// ## FETCH with LIMIT and ORDER BY
+/// ## Subquery with LIMIT and ORDER BY
 ///
 /// ```dart
 /// final spec = IncludeSpec('posts',
@@ -73,10 +78,10 @@ import '../schema/orm_annotations.dart';
 ///   descending: true,
 /// );
 /// final clause = generateFetchClause(metadata, spec: spec);
-/// // Returns: "FETCH posts ORDER BY createdAt DESC LIMIT 10"
+/// // Returns: "(SELECT * FROM posts WHERE author = $parent.id ORDER BY createdAt DESC LIMIT 10) AS posts"
 /// ```
 ///
-/// ## FETCH with all options
+/// ## Subquery with all options
 ///
 /// ```dart
 /// final spec = IncludeSpec('posts',
@@ -87,7 +92,7 @@ import '../schema/orm_annotations.dart';
 ///   descending: true,
 /// );
 /// final clause = generateFetchClause(metadata, spec: spec, db: database);
-/// // Returns: "FETCH posts WHERE (status = 'published' AND views > 100) ORDER BY createdAt DESC LIMIT 5"
+/// // Returns: "(SELECT * FROM posts WHERE author = $parent.id AND (status = 'published' AND views > 100) ORDER BY createdAt DESC LIMIT 5) AS posts"
 /// ```
 ///
 /// Parameters:
@@ -101,27 +106,169 @@ String generateFetchClause(
   IncludeSpec? spec,
   Database? db,
 }) {
-  final buffer = StringBuffer('FETCH ${metadata.fieldName}');
-
-  // Add WHERE clause if specified
-  if (spec?.where != null && db != null) {
-    buffer.write(' WHERE ${spec!.where!.toSurrealQL(db)}');
+  // If no filtering/sorting/limiting, use simple FETCH
+  if (spec == null ||
+      (spec.where == null && spec.orderBy == null && spec.limit == null)) {
+    return 'FETCH ${metadata.fieldName}';
   }
 
-  // Add ORDER BY clause if specified
-  if (spec?.orderBy != null) {
-    buffer.write(' ORDER BY ${spec!.orderBy}');
+  // If any filter/sort/limit exists, generate subquery instead
+  // This is because SurrealDB doesn't support WHERE clauses on FETCH
+  return generateSubqueryForRelationship(metadata, spec: spec, db: db);
+}
+
+/// Generates a subquery for filtered relationship loading.
+///
+/// Creates a correlated subquery using $parent to reference the outer query.
+/// This is the correct way to filter related records in SurrealDB since
+/// FETCH does not support WHERE clauses.
+///
+/// ## Example Output
+///
+/// ```sql
+/// (SELECT * FROM posts
+///  WHERE author = $parent.id AND status = 'published'
+///  ORDER BY createdAt DESC
+///  LIMIT 10) AS posts
+/// ```
+///
+/// ## Usage
+///
+/// ```dart
+/// final spec = IncludeSpec('posts',
+///   where: EqualsCondition('status', 'published'),
+///   orderBy: 'createdAt',
+///   descending: true,
+///   limit: 5,
+/// );
+/// final subquery = generateSubqueryForRelationship(metadata, spec: spec, db: db);
+/// // Returns: "(SELECT * FROM posts WHERE author = $parent.id AND status = 'published' ORDER BY createdAt DESC LIMIT 5) AS posts"
+/// ```
+///
+/// Parameters:
+/// - [metadata]: The record link metadata for this relationship
+/// - [spec]: The include specification with filtering/sorting/limiting
+/// - [db]: Optional database instance for parameter binding in where clauses
+///
+/// Returns a SurrealQL subquery expression string with alias.
+String generateSubqueryForRelationship(
+  RecordLinkMetadata metadata, {
+  required IncludeSpec spec,
+  Database? db,
+}) {
+  final buffer = StringBuffer();
+
+  // Start subquery
+  final targetTable = _getTargetTable(metadata);
+  buffer.write('(SELECT * FROM $targetTable');
+
+  // Build WHERE clause with parent correlation
+  final whereClauses = <String>[];
+
+  // Add parent correlation (e.g., author = $parent.id)
+  // This connects the subquery to the outer query
+  final foreignKey = _inferForeignKey(metadata);
+  whereClauses.add('$foreignKey = \$parent.id');
+
+  // Add user's filter condition
+  if (spec.where != null && db != null) {
+    final userFilter = spec.where!.toSurrealQL(db);
+    whereClauses.add(userFilter);
+  }
+
+  // Combine all WHERE conditions with AND
+  buffer.write(' WHERE ${whereClauses.join(' AND ')}');
+
+  // Add ORDER BY if specified
+  if (spec.orderBy != null) {
+    buffer.write(' ORDER BY ${spec.orderBy}');
     if (spec.descending == true) {
       buffer.write(' DESC');
     }
   }
 
-  // Add LIMIT clause if specified
-  if (spec?.limit != null) {
-    buffer.write(' LIMIT ${spec!.limit}');
+  // Add LIMIT if specified
+  if (spec.limit != null) {
+    buffer.write(' LIMIT ${spec.limit}');
   }
 
+  // Close subquery and add alias
+  buffer.write(') AS ${metadata.fieldName}');
+
   return buffer.toString();
+}
+
+/// Gets the target table name from metadata.
+///
+/// Uses the explicit table name if provided, otherwise pluralizes the
+/// target type name (e.g., 'Post' -> 'posts').
+String _getTargetTable(RecordLinkMetadata metadata) {
+  // Use the effectiveTableName which handles explicit vs inferred names
+  return metadata.effectiveTableName;
+}
+
+/// Infers the foreign key field name from relationship metadata.
+///
+/// Uses the explicit foreign key if provided in the annotation, otherwise
+/// falls back to a default convention ('author').
+///
+/// ## Examples:
+///
+/// ### Explicit Foreign Key
+/// ```dart
+/// @SurrealRecord(foreignKey: 'user_id')
+/// List<Post>? posts;
+/// ```
+/// Returns: 'user_id'
+///
+/// ### Default Convention
+/// ```dart
+/// @SurrealRecord()
+/// List<Post>? posts;
+/// ```
+/// Returns: 'author' (default)
+///
+/// ## Future Enhancement
+///
+/// Add parentTableName to RecordLinkMetadata to enable smart inference:
+/// - If parent is 'users' -> foreign key 'user' or 'user_id'
+/// - If parent is 'organizations' -> foreign key 'organization'
+String _inferForeignKey(RecordLinkMetadata metadata) {
+  // Use explicit foreign key if provided
+  if (metadata.foreignKey != null) {
+    return metadata.foreignKey!;
+  }
+
+  // Fall back to default convention
+  // Common patterns:
+  // - User -> posts: posts.author
+  // - User -> comments: comments.author
+  // - Organization -> members: members.organization
+  //
+  // Using 'author' as default since it's the most common pattern in the examples.
+  return 'author'; // Default to common 'author' pattern
+}
+
+/// Converts a plural word to singular (simple implementation).
+///
+/// Handles common English pluralization rules:
+/// - posts -> post
+/// - users -> user
+/// - companies -> company
+///
+/// This is a simplified version. Consider using a proper inflection library
+/// for production use.
+String _singularize(String word) {
+  if (word.endsWith('ies')) {
+    return '${word.substring(0, word.length - 3)}y';
+  }
+  if (word.endsWith('es')) {
+    return word.substring(0, word.length - 2);
+  }
+  if (word.endsWith('s')) {
+    return word.substring(0, word.length - 1);
+  }
+  return word;
 }
 
 /// Generates a graph traversal expression for a graph relation.

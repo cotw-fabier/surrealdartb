@@ -8,6 +8,8 @@ library;
 
 import 'package:surrealdartb/surrealdartb.dart';
 
+part 'profile.surreal.dart';
+
 /// Profile model - extended user information.
 @SurrealTable('profiles')
 class Profile {

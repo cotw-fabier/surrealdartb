@@ -125,6 +125,18 @@ library;
 /// final Profile profile;
 /// ```
 ///
+/// ## Explicit Foreign Key
+///
+/// When the foreign key field name in the target table differs from convention:
+///
+/// ```dart
+/// @SurrealRecord(foreignKey: 'user_id')
+/// final List<Post> posts;
+/// ```
+///
+/// This is used when generating filtered includes with subqueries. The foreign key
+/// must match the field name in the target table that references the parent record.
+///
 /// ## Non-Optional Relations
 ///
 /// Non-nullable relationships are automatically included in queries:
@@ -149,11 +161,41 @@ class SurrealRecord {
   /// ```
   final String? tableName;
 
+  /// Optional explicit foreign key field name in the target table.
+  ///
+  /// When null, the foreign key is inferred using naming conventions (typically 'author').
+  /// Use this when the target table uses a different field name to reference the parent.
+  ///
+  /// **Important:** This is the field name in the **target** table that points back
+  /// to the parent record, not a field in the parent table.
+  ///
+  /// Example:
+  /// ```dart
+  /// @SurrealTable('users')
+  /// class User {
+  ///   // Posts table has 'user_id' field that references users
+  ///   @SurrealRecord(foreignKey: 'user_id')
+  ///   final List<Post> posts;
+  ///
+  ///   // Comments table has 'author' field that references users
+  ///   @SurrealRecord(foreignKey: 'author')
+  ///   final List<Comment> comments;
+  /// }
+  /// ```
+  ///
+  /// This generates subqueries like:
+  /// ```sql
+  /// SELECT *, (SELECT * FROM posts WHERE user_id = $parent.id) AS posts
+  /// FROM users
+  /// ```
+  final String? foreignKey;
+
   /// Creates a SurrealRecord annotation.
   ///
-  /// The [tableName] parameter is optional. When not specified, the table name
-  /// is inferred from the field's type (e.g., `Profile` -> `profile` table).
-  const SurrealRecord({this.tableName});
+  /// Both [tableName] and [foreignKey] parameters are optional.
+  /// - [tableName]: Overrides inferred table name (e.g., `Profile` -> `profile`)
+  /// - [foreignKey]: Specifies the foreign key field in the target table
+  const SurrealRecord({this.tableName, this.foreignKey});
 }
 
 /// Direction for graph relation traversal.
