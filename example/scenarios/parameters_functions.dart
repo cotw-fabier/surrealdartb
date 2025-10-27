@@ -52,19 +52,19 @@ Future<void> _demonstrateParameterManagement(Database db) async {
 
   // Create sample data first
   print('Setting up sample data...');
-  await db.create('person', {
+  await db.createQL('person', {
     'name': 'Alice',
     'age': 25,
     'status': 'active',
     'city': 'New York',
   });
-  await db.create('person', {
+  await db.createQL('person', {
     'name': 'Bob',
     'age': 30,
     'status': 'active',
     'city': 'London',
   });
-  await db.create('person', {
+  await db.createQL('person', {
     'name': 'Charlie',
     'age': 35,
     'status': 'inactive',
@@ -81,7 +81,7 @@ Future<void> _demonstrateParameterManagement(Database db) async {
 
   // Use parameters in query
   print('Executing query with parameters...');
-  final response = await db.query('''
+  final response = await db.queryQL('''
     SELECT * FROM person
     WHERE age >= \$min_age
     AND age <= \$max_age
@@ -100,7 +100,7 @@ Future<void> _demonstrateParameterManagement(Database db) async {
   // Demonstrate parameter reuse
   print('Changing parameter and re-running query...');
   await db.set('status_filter', 'inactive');
-  final response2 = await db.query('''
+  final response2 = await db.queryQL('''
     SELECT * FROM person
     WHERE status = \$status_filter
   ''');
@@ -165,7 +165,7 @@ Future<void> _demonstrateCustomFunctions(Database db) async {
 
   // Define a custom function for tax calculation
   print('Defining custom function: fn::calculate_tax...');
-  await db.query('''
+  await db.queryQL('''
     DEFINE FUNCTION fn::calculate_tax(\$amount: number, \$rate: number) {
       RETURN \$amount * \$rate;
     };
@@ -180,7 +180,7 @@ Future<void> _demonstrateCustomFunctions(Database db) async {
 
   // Define another custom function
   print('Defining custom function: fn::full_name...');
-  await db.query('''
+  await db.queryQL('''
     DEFINE FUNCTION fn::full_name(\$first: string, \$last: string) {
       RETURN \$first + " " + \$last;
     };

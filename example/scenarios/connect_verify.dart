@@ -41,7 +41,7 @@ Future<void> runConnectVerifyScenario() async {
 
     // Step 3: Execute INFO query to verify connectivity
     print('Step 3: Executing INFO FOR DB query...');
-    final response = await db.query('INFO FOR DB;');
+    final response = await db.queryQL('INFO FOR DB;');
     final results = response.getResults();
 
     if (results.isEmpty) {

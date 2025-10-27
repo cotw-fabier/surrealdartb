@@ -66,7 +66,7 @@ Future<void> _demonstrateDevelopmentWorkflow() async {
 
     // Add some data
     print('Step 2: Adding test data...');
-    await db.create('products', {
+    await db.createQL('products', {
       'name': 'Widget',
       'price': 19.99,
     });
@@ -104,12 +104,12 @@ Future<void> _demonstrateDevelopmentWorkflow() async {
 
     // Verify old data still exists
     print('Step 4: Verifying data preservation...');
-    final products = await db.select('products');
+    final products = await db.selectQL('products');
     print('✓ Data preserved: ${products.length} product(s) still exist');
     print('  Old records have null for new optional fields\n');
 
     // Add new data with description
-    await db.create('products', {
+    await db.createQL('products', {
       'name': 'Gadget',
       'price': 29.99,
       'description': 'A cool gadget',
@@ -156,8 +156,8 @@ Future<void> _demonstrateProductionWorkflow() async {
 
     // Add production data
     print('Step 2: Simulating existing production data...');
-    await db.create('users', {'name': 'John Doe', 'email': 'john@example.com'});
-    await db.create('users', {'name': 'Jane Smith', 'email': 'jane@example.com'});
+    await db.createQL('users', {'name': 'John Doe', 'email': 'john@example.com'});
+    await db.createQL('users', {'name': 'Jane Smith', 'email': 'jane@example.com'});
     print('✓ Production database has 2 users\n');
 
     await db.close();
@@ -230,13 +230,13 @@ Future<void> _demonstrateProductionWorkflow() async {
 
     // Step 7: Verify migration
     print('Step 7: Verifying migration...');
-    final users = await db.select('users');
+    final users = await db.selectQL('users');
     print('✓ Data preserved: ${users.length} user(s) still exist');
     print('  Existing users have default value for \'created_at\'\n');
 
     // Step 8: View migration history
     print('Step 8: Checking migration history...');
-    final historyResponse = await db.query(
+    final historyResponse = await db.queryQL(
       'SELECT * FROM _migrations ORDER BY applied_at DESC LIMIT 5',
     );
     final history = historyResponse.getResults();
@@ -292,7 +292,7 @@ Future<void> _demonstrateDestructiveChanges() async {
     );
 
     // Add data
-    await db.create('items', {
+    await db.createQL('items', {
       'name': 'Item 1',
       'price': 10.0,
       'old_field': 'legacy data',

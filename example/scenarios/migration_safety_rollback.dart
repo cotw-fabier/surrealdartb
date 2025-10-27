@@ -75,8 +75,8 @@ Future<void> _demonstrateAutomaticRollback() async {
 
     // Add critical data
     print('Step 2: Adding critical production data...');
-    await db.create('accounts', {'username': 'alice', 'balance': 1000.0});
-    await db.create('accounts', {'username': 'bob', 'balance': 500.0});
+    await db.createQL('accounts', {'username': 'alice', 'balance': 1000.0});
+    await db.createQL('accounts', {'username': 'bob', 'balance': 500.0});
     print('✓ 2 accounts created with total balance: \$1500\n');
 
     // Step 3: Simulate a problematic migration
@@ -97,7 +97,7 @@ Future<void> _demonstrateAutomaticRollback() async {
 
     // Step 4: Verify data integrity
     print('Step 4: Verifying data integrity after failed migration...');
-    final accounts = await db.select('accounts');
+    final accounts = await db.selectQL('accounts');
     print('✓ All data intact: ${accounts.length} accounts');
     final totalBalance = accounts.fold<double>(
       0.0,
@@ -153,7 +153,7 @@ Future<void> _demonstrateManualRollback() async {
 
     // Add data
     print('Step 2: Adding orders...');
-    await db.create('orders', {
+    await db.createQL('orders', {
       'order_id': 'ORD-001',
       'amount': 99.99,
       'status': 'completed',
@@ -189,7 +189,7 @@ Future<void> _demonstrateManualRollback() async {
 
     // Step 4: View migration history
     print('Step 4: Viewing migration history...');
-    final historyResponse = await db.query(
+    final historyResponse = await db.queryQL(
       'SELECT migration_id, applied_at, status FROM _migrations ORDER BY applied_at DESC',
     );
     final history = historyResponse.getResults();
@@ -233,7 +233,7 @@ Future<void> _demonstrateManualRollback() async {
 
     // Step 6: Verify data after rollback
     print('Step 6: Verifying data integrity after rollback...');
-    final orders = await db.select('orders');
+    final orders = await db.selectQL('orders');
     print('✓ Data preserved: ${orders.length} order(s)');
     print('  All order data intact\n');
 

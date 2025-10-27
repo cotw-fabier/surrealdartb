@@ -34,7 +34,8 @@ You'll see an interactive menu:
 │ 3. Storage Backend Comparison                             │
 │ 4. Authentication Features (NEW!)                         │
 │ 5. Parameters & Functions (NEW!)                          │
-│ 6. Exit                                                    │
+│ 6. Type-Safe ORM Layer (NEW!)                             │
+│ 7. Exit                                                    │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -244,19 +245,131 @@ final upper = await db.run<String>('string::uppercase', ['hello']);
 final tax = await db.run<double>('fn::calculate_tax', [100.0, 0.08]);
 ```
 
+### Scenario 6: Type-Safe ORM Layer (NEW!)
+
+**File**: `scenarios/orm_type_safe_crud.dart`
+
+**What it demonstrates:**
+- Defining models with ORM annotations
+- Code generation workflow with build_runner
+- Type-safe CRUD operations
+- Advanced query builder with where clauses
+- Logical operators (AND, OR) for complex queries
+- Relationships with filtered includes
+- Nested includes with independent filtering
+
+**What you'll learn:**
+- How to add annotations to model classes
+- The code generation process
+- Benefits of compile-time type safety
+- Advanced query building techniques
+- Working with relationships in a type-safe way
+- When to use ORM vs raw QL methods
+
+**Key features:**
+- **Model Annotations**: `@SurrealTable`, `@SurrealField`, `@SurrealId`, `@SurrealRecord`
+- **Code Generation**: Automatic creation of ORM extensions and query builders
+- **Type-Safe CRUD**: `db.create(user)` instead of `db.createQL('users', map)`
+- **Query Builder**: Fluent API with compile-time safety
+- **Logical Operators**: Combine conditions with `&` (AND) and `|` (OR)
+- **Filtered Includes**: Load relationships with WHERE, LIMIT, ORDER BY
+
+**Example operations:**
+```dart
+// 1. Define your model
+@SurrealTable('users')
+class User {
+  @SurrealId()
+  String? id;
+
+  @SurrealField(type: StringType())
+  final String name;
+
+  @SurrealField(
+    type: NumberType(format: NumberFormat.integer),
+    assertClause: r'$value >= 18',
+  )
+  final int age;
+
+  @SurrealRecord()
+  List<Post>? posts;
+}
+
+// 2. Run code generation
+// $ dart run build_runner build
+
+// 3. Use type-safe CRUD
+final user = User(name: 'Alice', age: 28);
+final created = await db.create(user);
+
+user.age = 29;
+await db.update(user);
+
+// 4. Build complex queries
+final adults = await db.query<User>()
+  .where((t) =>
+    (t.age.between(18, 65) & t.status.equals('active')) |
+    t.role.equals('admin')
+  )
+  .orderBy('createdAt', descending: true)
+  .limit(10)
+  .execute();
+
+// 5. Use relationships with filtering
+final users = await db.query<User>()
+  .include('posts',
+    where: (p) => p.status.equals('published'),
+    orderBy: 'createdAt',
+    limit: 5
+  )
+  .execute();
+
+// 6. Nested includes
+final users = await db.query<User>()
+  .include('posts',
+    include: ['comments', 'tags'],
+    where: (p) => p.status.equals('published')
+  )
+  .execute();
+```
+
+**Important notes:**
+- ORM features require code generation with `build_runner`
+- See `scenarios/models/` for complete model examples
+- ORM provides compile-time safety - errors caught before runtime
+- Backward compatible - QL suffix methods still available
+- Choose ORM for type safety, QL for dynamic queries
+
+**When to use:**
+- **Use ORM when:**
+  - You have well-defined models
+  - You want compile-time type safety
+  - You need IDE autocomplete support
+  - You want automatic validation
+
+- **Use QL methods when:**
+  - Building dynamic queries at runtime
+  - Working with schemaless tables
+  - Prototyping or exploring data
+  - Need maximum flexibility
+
 ## Project Structure
 
 ```
 example/
 ├── cli_example.dart                     # Main menu driver
-├── surrealdartb_example.dart            # Alternative simple example
 ├── README.md                            # This file
 └── scenarios/
     ├── connect_verify.dart              # Scenario 1
     ├── crud_operations.dart             # Scenario 2
     ├── storage_comparison.dart          # Scenario 3
     ├── authentication.dart              # Scenario 4 (NEW!)
-    └── parameters_functions.dart        # Scenario 5 (NEW!)
+    ├── parameters_functions.dart        # Scenario 5 (NEW!)
+    ├── orm_type_safe_crud.dart          # Scenario 6 (NEW!)
+    └── models/                          # Example models for ORM
+        ├── user.dart                    # User model with annotations
+        ├── post.dart                    # Post model with relationships
+        └── profile.dart                 # Profile model
 ```
 
 ### File Descriptions
@@ -293,6 +406,19 @@ example/
 - Built-in function execution
 - Custom function definition
 - Database version retrieval
+
+**`scenarios/orm_type_safe_crud.dart`**
+- ORM annotation demonstration
+- Type-safe CRUD operations
+- Advanced query builder
+- Logical operators (AND, OR)
+- Relationships with filtered includes
+
+**`scenarios/models/`**
+- Example model definitions
+- Demonstrates annotation usage
+- Shows relationship patterns
+- Reference for your own models
 
 ## Understanding the Code
 
@@ -492,13 +618,20 @@ ls -la /tmp
    - JWT token handling
    - Session management
 
-6. **Read the code** in `scenarios/` folder
+6. **Try Scenario 6** (Type-Safe ORM Layer)
+   - Learn ORM annotation patterns
+   - See code generation in action
+   - Master type-safe queries
+   - Understand relationships
+
+7. **Read the code** in `scenarios/` folder
    - See real-world patterns
    - Understand error handling
 
-7. **Experiment**: Modify scenarios
+8. **Experiment**: Modify scenarios
    - Change queries
    - Add new operations
+   - Try your own models with ORM
    - Break things and learn!
 
 ## Additional Resources

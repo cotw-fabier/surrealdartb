@@ -46,7 +46,7 @@ Future<void> runCrudScenario() async {
 
     // Step 2: Create a new person record
     print('Step 2: Creating a new person record...');
-    final person = await db.create('person', {
+    final person = await db.createQL('person', {
       'name': 'John Doe',
       'age': 30,
       'email': 'john.doe@example.com',
@@ -64,7 +64,7 @@ Future<void> runCrudScenario() async {
 
     // Step 3: Query all person records
     print('Step 3: Querying all person records...');
-    final persons = await db.select('person');
+    final persons = await db.selectQL('person');
     print('✓ Found ${persons.length} record(s)');
     for (final p in persons) {
       print('  - ${p['name']} (${p['age']} years old)');
@@ -73,7 +73,7 @@ Future<void> runCrudScenario() async {
 
     // Step 4: Update the record
     print('Step 4: Updating person record...');
-    final updated = await db.update(recordId, {
+    final updated = await db.updateQL(recordId, {
       'age': 31,
       'email': 'john.updated@example.com',
       'city': 'Los Angeles',
@@ -87,7 +87,7 @@ Future<void> runCrudScenario() async {
 
     // Step 5: Verify the update with a query
     print('Step 5: Verifying update with query...');
-    final response = await db.query('SELECT * FROM person WHERE age > 30');
+    final response = await db.queryQL('SELECT * FROM person WHERE age > 30');
     final results = response.getResults();
     print('✓ Query result for age > 30:');
     if (results.isEmpty) {
@@ -101,12 +101,12 @@ Future<void> runCrudScenario() async {
 
     // Step 6: Delete the record
     print('Step 6: Deleting person record...');
-    await db.delete(recordId);
+    await db.deleteQL(recordId);
     print('✓ Record deleted: $recordId\n');
 
     // Step 7: Verify deletion
     print('Step 7: Verifying deletion...');
-    final remaining = await db.select('person');
+    final remaining = await db.selectQL('person');
     print('✓ Remaining records: ${remaining.length}');
     if (remaining.isEmpty) {
       print('  All records have been deleted\n');
@@ -207,7 +207,7 @@ Future<void> _demonstrateSchemaValidatedCrud(Database db) async {
     rethrow;
   }
 
-  final product = await db.create('product', productData, schema: productSchema);
+  final product = await db.createQL('product', productData, schema: productSchema);
   print('✓ Product created:');
   print('  ID: ${product['id']}');
   print('  Name: ${product['name']}');
@@ -244,7 +244,7 @@ Future<void> _demonstrateSchemaValidatedCrud(Database db) async {
   };
 
   productSchema.validate(validUpdate);
-  final updated = await db.update(productId, validUpdate, schema: productSchema);
+  final updated = await db.updateQL(productId, validUpdate, schema: productSchema);
   print('✓ Product updated:');
   print('  Price: \$${updated['price']} (was \$999.99)');
   print('  Quantity: ${updated['quantity']} (was 10)');
@@ -271,7 +271,7 @@ Future<void> _demonstrateSchemaValidatedCrud(Database db) async {
 
   // Step 6: Query and clean up
   print('Step 6: Querying products...');
-  final products = await db.select('product');
+  final products = await db.selectQL('product');
   print('✓ Found ${products.length} product(s)');
   for (final p in products) {
     print('  - ${p['name']}: \$${p['price']}');
@@ -279,7 +279,7 @@ Future<void> _demonstrateSchemaValidatedCrud(Database db) async {
   print('');
 
   print('Step 7: Cleaning up...');
-  await db.delete(productId);
+  await db.deleteQL(productId);
   print('✓ Product deleted\n');
 
   // Summary

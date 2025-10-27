@@ -50,7 +50,7 @@ Future<void> _testMemoryBackend() async {
     print('✓ Connected\n');
 
     print('Creating test record...');
-    final record = await db.create('product', {
+    final record = await db.createQL('product', {
       'name': 'Laptop',
       'price': 999.99,
       'stock': 42,
@@ -60,7 +60,7 @@ Future<void> _testMemoryBackend() async {
 
     // Verify data exists
     print('Querying records...');
-    final products = await db.select('product');
+    final products = await db.selectQL('product');
     print('✓ Found ${products.length} product(s) in database\n');
 
     // Close the database
@@ -79,7 +79,7 @@ Future<void> _testMemoryBackend() async {
     print('✓ Reconnected\n');
 
     print('Querying records after reconnection...');
-    final productsAfter = await db.select('product');
+    final productsAfter = await db.selectQL('product');
     print('✓ Found ${productsAfter.length} product(s) in database');
 
     if (productsAfter.isEmpty) {
@@ -143,7 +143,7 @@ Future<void> _testRocksDbBackend() async {
     print('✓ Connected\n');
 
     print('Creating test record...');
-    final record = await db.create('product', {
+    final record = await db.createQL('product', {
       'name': 'Desktop',
       'price': 1499.99,
       'stock': 15,
@@ -153,7 +153,7 @@ Future<void> _testRocksDbBackend() async {
 
     // Verify data exists
     print('Querying records...');
-    final products = await db.select('product');
+    final products = await db.selectQL('product');
     print('✓ Found ${products.length} product(s) in database\n');
 
     // Close the database - this will trigger graceful cleanup
@@ -176,7 +176,7 @@ Future<void> _testRocksDbBackend() async {
     print('✓ Connected to new database path\n');
 
     print('Querying records in new database instance...');
-    final productsAfter = await db.select('product');
+    final productsAfter = await db.selectQL('product');
     print('✓ Found ${productsAfter.length} product(s) in database');
 
     if (productsAfter.isEmpty) {
@@ -184,7 +184,7 @@ Future<void> _testRocksDbBackend() async {
 
       // Create a new record in the second database
       print('Creating a record in the second database...');
-      final newRecord = await db.create('product', {
+      final newRecord = await db.createQL('product', {
         'name': 'Monitor',
         'price': 399.99,
         'stock': 25,

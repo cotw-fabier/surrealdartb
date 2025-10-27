@@ -12,6 +12,7 @@ import 'dart:io';
 import 'scenarios/authentication.dart';
 import 'scenarios/connect_verify.dart';
 import 'scenarios/crud_operations.dart';
+import 'scenarios/orm_type_safe_crud.dart';
 import 'scenarios/parameters_functions.dart';
 import 'scenarios/storage_comparison.dart';
 
@@ -43,11 +44,13 @@ void main() async {
         await _runScenario(
             'Parameters & Functions', runParametersFunctionsScenario);
       case '6':
+        await _runScenario('Type-Safe ORM Layer', runOrmTypeSafeCrudScenario);
+      case '7':
         print('\nThank you for using SurrealDB Dart FFI bindings!');
         print('Goodbye!\n');
         running = false;
       default:
-        print('\n✗ Invalid choice. Please enter a number between 1 and 6.\n');
+        print('\n✗ Invalid choice. Please enter a number between 1 and 7.\n');
     }
   }
 }
@@ -98,7 +101,14 @@ void _printMenu() {
   print('│    • Define and run custom functions                      │');
   print('│    • Get database version                                 │');
   print('│                                                            │');
-  print('│ 6. Exit                                                    │');
+  print('│ 6. Type-Safe ORM Layer (NEW!)                             │');
+  print('│    • Define models with ORM annotations                   │');
+  print('│    • Type-safe CRUD operations                            │');
+  print('│    • Advanced query builder with where clauses            │');
+  print('│    • Logical operators (AND, OR)                          │');
+  print('│    • Relationships with filtered includes                 │');
+  print('│                                                            │');
+  print('│ 7. Exit                                                    │');
   print('└────────────────────────────────────────────────────────────┘');
   print('');
 }

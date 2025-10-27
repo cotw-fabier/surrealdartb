@@ -117,7 +117,7 @@ Future<void> runBasicTableGenerationScenario() async {
 
     // Create a user
     print('Creating a user...');
-    final user = await db.create('users', {
+    final user = await db.createQL('users', {
       'name': 'Alice Smith',
       'age': 25,
       'email': 'alice@example.com',
@@ -130,7 +130,7 @@ Future<void> runBasicTableGenerationScenario() async {
 
     // Query users
     print('Querying users...');
-    final users = await db.select('users');
+    final users = await db.selectQL('users');
     print('✓ Found ${users.length} user(s)');
     for (final u in users) {
       print('  - ${u['name']} (${u['age']}) - ${u['email']}');
@@ -140,7 +140,7 @@ Future<void> runBasicTableGenerationScenario() async {
     // Try to create a user with invalid age (should fail assertion)
     print('Testing validation (age < 18)...');
     try {
-      await db.create('users', {
+      await db.createQL('users', {
         'name': 'Young User',
         'age': 15, // Too young!
         'email': 'young@example.com',

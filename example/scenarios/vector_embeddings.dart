@@ -91,7 +91,7 @@ Future<void> _demonstrateVectorStorage(Database db) async {
   // Step 3: Store documents with embeddings
   print('Step 3: Storing documents with embeddings...');
 
-  final doc1 = await db.create(
+  final doc1 = await db.createQL(
     'document',
     {
       'title': 'Machine Learning Basics',
@@ -102,7 +102,7 @@ Future<void> _demonstrateVectorStorage(Database db) async {
     schema: documentSchema,
   );
 
-  final doc2 = await db.create(
+  final doc2 = await db.createQL(
     'document',
     {
       'title': 'Cooking Recipes',
@@ -113,7 +113,7 @@ Future<void> _demonstrateVectorStorage(Database db) async {
     schema: documentSchema,
   );
 
-  final doc3 = await db.create(
+  final doc3 = await db.createQL(
     'document',
     {
       'title': 'Deep Learning Tutorial',
@@ -143,7 +143,7 @@ Future<void> _demonstrateSemanticSearch(Database db) async {
 
   // Step 1: Retrieve all documents
   print('Step 1: Retrieving stored documents...');
-  final documents = await db.select('document');
+  final documents = await db.selectQL('document');
   print('✓ Retrieved ${documents.length} documents\n');
 
   // Step 2: Create query embedding (simulated user query)
