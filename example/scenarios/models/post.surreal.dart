@@ -69,7 +69,7 @@ extension PostORM on Post {
   }
 
   /// Gets the ID of this record.
-  String get recordId => id;
+  String? get recordId => id;
 
   /// Gets the table name for this entity.
   ///
@@ -154,15 +154,10 @@ extension PostORM on Post {
       'fieldName': 'author',
       'targetType': 'User',
       'isList': false,
-      'isOptional': false,
+      'isOptional': true,
       'type': 'RecordLink',
       'effectiveTableName': 'user',
     },
-  };
-
-  /// Auto-include fields for non-optional relationships
-  static const autoIncludeRelations = <String>{
-    'author',
   };
 }
 

@@ -699,7 +699,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
 
     // Generate ID getter if ID field exists
     if (idField != null) {
-      buffer.write(_generateIdGetter(idField, fields));
+      buffer.write(_generateIdGetter(idField, fields, classElement));
       buffer.writeln();
     }
 
@@ -869,26 +869,24 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   }
 
   /// Generates ID getter method.
-  String _generateIdGetter(String idField, List<_FieldInfo> fields) {
+  String _generateIdGetter(String idField, List<_FieldInfo> fields, ClassElement classElement) {
     final buffer = StringBuffer();
 
-    // Find the field info for the ID field to check if it's nullable
-    final idFieldInfo = fields.firstWhere(
-      (f) => f.name == idField,
-      orElse: () => _FieldInfo(
-        name: idField,
-        dartType: null,
-        type: null,
-        isOptional: false,
-        defaultValue: null,
-        assertClause: null,
-        indexed: false,
-        dimensions: null,
-        nestedSchema: null,
-      ),
-    );
+    // Find the actual field element to check its nullability
+    // Note: ID field may only have @SurrealId, not @SurrealField,
+    // so it might not be in the fields list
+    FieldElement? idFieldElement;
+    for (final field in classElement.fields) {
+      if (field.name == idField) {
+        idFieldElement = field;
+        break;
+      }
+    }
 
-    final returnType = idFieldInfo.isOptional ? 'String?' : 'String';
+    // Determine if the ID field is nullable by checking the actual field type
+    final isNullable = idFieldElement != null &&
+        idFieldElement.type.nullabilitySuffix == NullabilitySuffix.question;
+    final returnType = isNullable ? 'String?' : 'String';
 
     buffer.writeln('  /// Gets the ID of this record.');
     buffer.writeln('  $returnType get recordId => $idField;');

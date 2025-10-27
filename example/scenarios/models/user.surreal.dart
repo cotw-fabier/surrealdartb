@@ -67,7 +67,7 @@ extension UserORM on User {
   }
 
   /// Gets the ID of this record.
-  String get recordId => id;
+  String? get recordId => id;
 
   /// Gets the table name for this entity.
   ///

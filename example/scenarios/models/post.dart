@@ -43,10 +43,11 @@ class Post {
   DateTime? updatedAt;
 
   /// The author of this post (reverse relationship to User).
-  /// This is a required relationship - user must exist.
-  /// Being non-nullable means it will be auto-included in queries.
+  /// This is a relationship field loaded separately via FETCH/includes.
+  /// Being non-nullable and non-optional means it will be auto-included in queries.
+  /// Note: Must be nullable for deserialization since it's loaded separately.
   @SurrealRecord()
-  final User author;
+  User? author;
 
   /// Constructor
   Post({
@@ -56,7 +57,7 @@ class Post {
     this.status = 'draft',
     DateTime? createdAt,
     this.updatedAt,
-    required this.author,
+    this.author,
   }) : createdAt = createdAt ?? DateTime.now();
 
   @override
