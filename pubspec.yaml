@@ -1,6 +1,6 @@
 name: surrealdartb
 description: Dart FFI bindings for SurrealDB with native Rust integration
-version: 1.0.0
+version: 0.0.4
 # repository: https://github.com/my_org/my_repo
 
 environment:
