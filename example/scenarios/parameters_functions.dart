@@ -142,10 +142,10 @@ Future<void> _demonstrateBuiltInFunctions(Database db) async {
   print('Math functions:');
   final sqrt = await db.run<double>('math::sqrt', [16.0]);
   print('  math::sqrt(16) = $sqrt');
-  final ceil = await db.run<int>('math::ceil', [4.3]);
-  print('  math::ceil(4.3) = $ceil');
-  final floor = await db.run<int>('math::floor', [4.8]);
-  print('  math::floor(4.8) = $floor\n');
+  final ceil = await db.run<double>('math::ceil', [4.3]);
+  print('  math::ceil(4.3) = ${ceil.toInt()}');
+  final floor = await db.run<double>('math::floor', [4.8]);
+  print('  math::floor(4.8) = ${floor.toInt()}\n');
 
   // Time functions
   print('Time functions:');
