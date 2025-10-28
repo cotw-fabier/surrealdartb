@@ -212,5 +212,11 @@ export 'src/orm/relationship_loader.dart'
         buildIncludeClauses,
         determineAutoIncludes;
 
+// Vector indexing and similarity search (Task Group 3)
+export 'src/vector/distance_metric.dart' show DistanceMetric, DistanceMetricExtension;
+export 'src/vector/index_type.dart' show IndexType, IndexTypeExtension;
+export 'src/vector/index_definition.dart' show IndexDefinition;
+export 'src/vector/similarity_result.dart' show SimilarityResult;
+
 // Internal implementation details are NOT exported
 // - src/ffi/* (FFI bindings and native types)

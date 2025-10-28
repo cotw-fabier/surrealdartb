@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(mkdir:*)",
+      "Bash(dir /b libsrc)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:surrealdb.com)",
+      "Bash(ls:*)",
+      "Bash(test:*)",
+      "Bash(dart test:*)",
+      "Bash(jobs)",
+      "Bash(dart analyze:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

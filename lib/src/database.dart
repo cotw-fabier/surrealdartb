@@ -132,9 +132,9 @@
 ///
 /// await db.queryQL('''
 ///   INSERT INTO embeddings [
-///     { name: "x", vec: \$vec1 },
-///     { name: "y", vec: \$vec2 },
-///     { name: "z", vec: \$vec3 }
+///     { name: "x", vec: $vec1 },
+///     { name: "y", vec: $vec2 },
+///     { name: "z", vec: $vec3 }
 ///   ]
 /// ''');
 /// ```
@@ -169,6 +169,9 @@ import 'types/jwt.dart';
 import 'schema/migration_engine.dart';
 import 'orm/where_condition.dart';
 import 'orm/include_spec.dart';
+import 'types/vector_value.dart';
+import 'vector/distance_metric.dart';
+import 'vector/similarity_result.dart';
 
 /// High-level asynchronous database client for SurrealDB.
 ///
@@ -1825,6 +1828,277 @@ class Database {
     );
   }
 
+
+  // ============================================================================
+  // Vector Similarity Search Methods (Task Group 3)
+  // ============================================================================
+
+  /// Performs vector similarity search on a vector field.
+  ///
+  /// This method searches for similar vectors in a table using the specified
+  /// distance metric and returns results ordered by similarity (distance).
+  ///
+  /// ## Distance Metrics
+  ///
+  /// - **Euclidean**: Straight-line distance (L2 norm) - best for general-purpose
+  /// - **Cosine**: Angle-based similarity - best for text embeddings
+  /// - **Manhattan**: Taxicab distance (L1 norm) - best for high-dimensional spaces
+  /// - **Minkowski**: Generalized distance - best for specialized applications
+  ///
+  /// ## Query Generation
+  ///
+  /// Generates SurrealQL:
+  /// ```
+  /// SELECT *, vector::similarity::metric(field, $queryVector) AS distance
+  /// FROM table
+  /// WHERE [conditions]
+  /// ORDER BY distance [ASC|DESC]
+  /// LIMIT n
+  /// ```
+  ///
+  /// Parameters:
+  /// - [table] - The table name to search
+  /// - [field] - The vector field name to search on
+  /// - [queryVector] - The query vector to compare against
+  /// - [metric] - The distance metric to use
+  /// - [limit] - Maximum number of results (default: 10)
+  /// - [where] - Optional WHERE conditions for filtering
+  /// - [orderBy] - Optional field to order by (after distance)
+  /// - [ascending] - Sort direction for orderBy (default: true)
+  ///
+  /// Returns a list of SimilarityResult objects ordered by distance.
+  ///
+  /// Throws:
+  /// - [StateError] if database is closed
+  /// - [ArgumentError] if table or field name is empty
+  /// - [QueryException] if search operation fails
+  /// - [DatabaseException] for other errors
+  ///
+  /// Example:
+  /// ```dart
+  /// // Basic similarity search
+  /// final queryVector = VectorValue.f32([1.0, 0.0, 0.0]);
+  /// final results = await db.searchSimilar(
+  ///   table: 'documents',
+  ///   field: 'embedding',
+  ///   queryVector: queryVector,
+  ///   metric: DistanceMetric.euclidean,
+  ///   limit: 10,
+  /// );
+  ///
+  /// for (final result in results) {
+  ///   print('${result.record['title']}: distance = ${result.distance}');
+  /// }
+  ///
+  /// // Search with filtering
+  /// final filtered = await db.searchSimilar(
+  ///   table: 'documents',
+  ///   field: 'embedding',
+  ///   queryVector: queryVector,
+  ///   metric: DistanceMetric.cosine,
+  ///   limit: 5,
+  ///   where: EqualsCondition('status', 'active'),
+  /// );
+  /// ```
+  Future<List<SimilarityResult<Map<String, dynamic>>>> searchSimilar({
+    required String table,
+    required String field,
+    required VectorValue queryVector,
+    required DistanceMetric metric,
+    int limit = 10,
+    WhereCondition? where,
+    String? orderBy,
+    bool ascending = true,
+  }) async {
+    _ensureNotClosed();
+
+    if (table.isEmpty) {
+      throw ArgumentError.value(table, 'table', 'Table name cannot be empty');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Field name cannot be empty');
+    }
+
+    return Future(() async {
+      // Generate unique parameter name for query vector
+      final vectorParamName = 'queryVector_${_paramCounter++}';
+
+      // Bind query vector as parameter
+      await set(vectorParamName, queryVector.toJson());
+
+      try {
+        // Build SurrealQL query
+        final queryBuffer = StringBuffer();
+        queryBuffer.write(
+          'SELECT *, ${metric.toFullSurrealQLFunction()}($field, \$$vectorParamName) AS distance FROM $table',
+        );
+
+        // Add WHERE clause if provided
+        if (where != null) {
+          final whereClause = where.toSurrealQL(this);
+          queryBuffer.write(' WHERE $whereClause');
+        }
+
+        // Primary ordering is always by distance
+        queryBuffer.write(' ORDER BY distance ${ascending ? 'ASC' : 'DESC'}');
+
+        // Add secondary orderBy if provided
+        if (orderBy != null && orderBy.isNotEmpty) {
+          queryBuffer.write(', $orderBy ${ascending ? 'ASC' : 'DESC'}');
+        }
+
+        // Add LIMIT clause
+        if (limit > 0) {
+          queryBuffer.write(' LIMIT $limit');
+        }
+
+        final sqlQuery = queryBuffer.toString();
+
+        // Execute query
+        final sqlPtr = sqlQuery.toNativeUtf8();
+        try {
+          final responsePtr = dbQuery(_handle, sqlPtr);
+          final data = _processResponse(responsePtr);
+
+          // Process results into SimilarityResult objects
+          if (data is List && data.isNotEmpty) {
+            final firstElement = data.first;
+            final List<dynamic> records;
+
+            if (firstElement is List) {
+              records = firstElement;
+            } else {
+              records = data;
+            }
+
+            // Parse each record into SimilarityResult
+            final results = <SimilarityResult<Map<String, dynamic>>>[];
+            for (final record in records) {
+              if (record is Map<String, dynamic>) {
+                try {
+                  final result = SimilarityResult<Map<String, dynamic>>.fromJson(record);
+                  results.add(result);
+                } catch (e) {
+                  throw QueryException(
+                    'Failed to parse similarity result: $e. '
+                    'Ensure query includes distance field.',
+                  );
+                }
+              }
+            }
+
+            return results;
+          }
+
+          return <SimilarityResult<Map<String, dynamic>>>[];
+        } finally {
+          malloc.free(sqlPtr);
+        }
+      } finally {
+        // Clean up parameter
+        await unset(vectorParamName);
+      }
+    });
+  }
+
+  /// Performs batch similarity search on multiple query vectors.
+  ///
+  /// This method executes multiple similarity searches in sequence and returns
+  /// results mapped by the input vector index. Each query vector gets its own
+  /// result set.
+  ///
+  /// ## Use Cases
+  ///
+  /// - Compare multiple query vectors against the same dataset
+  /// - Find similar documents for multiple embeddings in one call
+  /// - Batch process search queries for efficiency
+  ///
+  /// ## Performance
+  ///
+  /// Queries are executed sequentially. For very large batch sizes, consider
+  /// splitting into smaller batches.
+  ///
+  /// Parameters:
+  /// - [table] - The table name to search
+  /// - [field] - The vector field name to search on
+  /// - [queryVectors] - List of query vectors to search with
+  /// - [metric] - The distance metric to use
+  /// - [limit] - Maximum number of results per query (default: 10)
+  ///
+  /// Returns a map of input index to result list. Each entry contains the
+  /// similarity results for the corresponding query vector.
+  ///
+  /// Throws:
+  /// - [StateError] if database is closed
+  /// - [ArgumentError] if table or field name is empty
+  /// - [QueryException] if any search operation fails
+  /// - [DatabaseException] for other errors
+  ///
+  /// Example:
+  /// ```dart
+  /// // Batch search with multiple vectors
+  /// final queryVectors = [
+  ///   VectorValue.f32([1.0, 0.0, 0.0]),
+  ///   VectorValue.f32([0.0, 1.0, 0.0]),
+  ///   VectorValue.f32([0.0, 0.0, 1.0]),
+  /// ];
+  ///
+  /// final results = await db.batchSearchSimilar(
+  ///   table: 'embeddings',
+  ///   field: 'vector',
+  ///   queryVectors: queryVectors,
+  ///   metric: DistanceMetric.cosine,
+  ///   limit: 5,
+  /// );
+  ///
+  /// // Access results by input index
+  /// for (var i = 0; i < queryVectors.length; i++) {
+  ///   print('Results for query vector $i:');
+  ///   for (final result in results[i]!) {
+  ///     print('  - ${result.record['id']}: ${result.distance}');
+  ///   }
+  /// }
+  /// ```
+  Future<Map<int, List<SimilarityResult<Map<String, dynamic>>>>> batchSearchSimilar({
+    required String table,
+    required String field,
+    required List<VectorValue> queryVectors,
+    required DistanceMetric metric,
+    int limit = 10,
+  }) async {
+    _ensureNotClosed();
+
+    if (table.isEmpty) {
+      throw ArgumentError.value(table, 'table', 'Table name cannot be empty');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Field name cannot be empty');
+    }
+
+    // Handle empty query list
+    if (queryVectors.isEmpty) {
+      return {};
+    }
+
+    return Future(() async {
+      final results = <int, List<SimilarityResult<Map<String, dynamic>>>>{};
+
+      // Execute searches sequentially
+      for (var i = 0; i < queryVectors.length; i++) {
+        final queryResults = await searchSimilar(
+          table: table,
+          field: field,
+          queryVector: queryVectors[i],
+          metric: metric,
+          limit: limit,
+        );
+
+        results[i] = queryResults;
+      }
+
+      return results;
+    });
+  }
 
   // ============================================================================
   // Type-Safe Query Builder Factory (Task Group 7)

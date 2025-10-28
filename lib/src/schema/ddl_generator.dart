@@ -2,10 +2,11 @@
 ///
 /// This library provides tools for generating SurrealQL DDL statements from
 /// schema diffs, including DEFINE TABLE, DEFINE FIELD, DEFINE INDEX, and
-/// REMOVE statements for tables, fields, and indexes.
+/// REMOVE statements for tables, fields, and indexes (both regular and vector).
 library;
 
 import '../types/vector_value.dart';
+import '../vector/index_definition.dart';
 import 'diff_engine.dart';
 import 'surreal_types.dart';
 import 'table_structure.dart';
@@ -37,14 +38,16 @@ import 'table_structure.dart';
 /// The generator produces statements in dependency order:
 /// 1. DEFINE TABLE statements (create tables first)
 /// 2. DEFINE FIELD statements (add fields to tables)
-/// 3. DEFINE INDEX statements (create indexes on fields)
-/// 4. REMOVE INDEX statements (remove indexes before fields)
-/// 5. REMOVE FIELD statements (remove fields before tables)
-/// 6. REMOVE TABLE statements (remove tables last)
+/// 3. DEFINE INDEX statements (create regular indexes on fields)
+/// 4. DEFINE INDEX statements (create vector indexes on vector fields)
+/// 5. REMOVE INDEX statements (remove indexes before fields)
+/// 6. REMOVE FIELD statements (remove fields before tables)
+/// 7. REMOVE TABLE statements (remove tables last)
 ///
 /// ## Special Type Handling
 ///
 /// - **Vector types**: Generates `vector<FORMAT, DIMENSIONS>` syntax
+/// - **Vector indexes**: Generates `DEFINE INDEX ... MTREE|HNSW DISTANCE ...` syntax
 /// - **ASSERT clauses**: Includes validation expressions with proper escaping
 /// - **DEFAULT values**: Formats values based on type (strings quoted, bools/nums raw)
 /// - **Optional fields**: Maps to `option<T>` type wrapper in SurrealDB
@@ -105,7 +108,7 @@ class DdlGenerator {
       desiredTableMap[table.tableName] = table;
     }
 
-    // Phase 1: Add new tables (DEFINE TABLE + all fields + indexes)
+    // Phase 1: Add new tables (DEFINE TABLE + all fields + regular indexes + vector indexes)
     for (final tableName in diff.tablesAdded) {
       final table = desiredTableMap[tableName];
       if (table != null) {
@@ -121,12 +124,19 @@ class DdlGenerator {
           );
         }
 
-        // Define all indexes for the new table
+        // Define all regular indexes for the new table
         for (final entry in table.fields.entries) {
           final fieldName = entry.key;
           final fieldDef = entry.value;
           if (fieldDef.indexed) {
             statements.add(generateDefineIndex(tableName, fieldName));
+          }
+        }
+
+        // Define all vector indexes for the new table
+        if (table.vectorIndexes != null) {
+          for (final index in table.vectorIndexes!) {
+            statements.add(index.toSurrealQL());
           }
         }
       }
@@ -175,7 +185,7 @@ class DdlGenerator {
       }
     }
 
-    // Phase 4: Add new indexes (DEFINE INDEX)
+    // Phase 4: Add new regular indexes (DEFINE INDEX)
     // Skip newly added tables since their indexes were already defined in Phase 1
     for (final entry in diff.indexesAdded.entries) {
       final tableName = entry.key;
@@ -385,6 +395,103 @@ class DdlGenerator {
     return 'DEFINE INDEX $indexName ON $tableName FIELDS $fieldName';
   }
 
+  /// Generates DEFINE INDEX statements for all vector indexes in a table.
+  ///
+  /// Creates SurrealQL statements for all vector indexes defined in the table.
+  /// Vector indexes include distance metrics, dimensions, and index type parameters.
+  ///
+  /// [table] - The table structure containing vector indexes
+  ///
+  /// Returns a list of DEFINE INDEX statements for vector indexes.
+  ///
+  /// Example:
+  /// ```dart
+  /// final table = TableStructure('documents', {
+  ///   'embedding': FieldDefinition(VectorType.f32(768)),
+  /// }, vectorIndexes: [
+  ///   IndexDefinition(
+  ///     indexName: 'idx_embedding',
+  ///     tableName: 'documents',
+  ///     fieldName: 'embedding',
+  ///     distanceMetric: DistanceMetric.cosine,
+  ///     dimensions: 768,
+  ///     indexType: IndexType.mtree,
+  ///   ),
+  /// ]);
+  /// final statements = generator.generateVectorIndexDDL(table);
+  /// // Returns: ['DEFINE INDEX idx_embedding ON documents FIELDS embedding MTREE DISTANCE COSINE DIMENSION 768']
+  /// ```
+  List<String> generateVectorIndexDDL(TableStructure table) {
+    final statements = <String>[];
+
+    if (table.vectorIndexes != null) {
+      for (final index in table.vectorIndexes!) {
+        statements.add(index.toSurrealQL());
+      }
+    }
+
+    return statements;
+  }
+
+  /// Generates a complete set of DDL statements for a table.
+  ///
+  /// Produces all DDL statements needed to create a table from scratch,
+  /// including table definition, field definitions, regular indexes,
+  /// and vector indexes in the correct order.
+  ///
+  /// [table] - The table structure to generate DDL for
+  ///
+  /// Returns a list of DDL statements in dependency order.
+  ///
+  /// Example:
+  /// ```dart
+  /// final table = TableStructure('articles', {
+  ///   'title': FieldDefinition(StringType()),
+  ///   'embedding': FieldDefinition(VectorType.f32(1536)),
+  /// }, vectorIndexes: [
+  ///   IndexDefinition(
+  ///     indexName: 'idx_embedding',
+  ///     tableName: 'articles',
+  ///     fieldName: 'embedding',
+  ///     distanceMetric: DistanceMetric.cosine,
+  ///     dimensions: 1536,
+  ///   ),
+  /// ]);
+  /// final ddl = generator.generateFullTableDDL(table);
+  /// // Returns statements in order: table, fields, regular indexes, vector indexes
+  /// ```
+  List<String> generateFullTableDDL(TableStructure table) {
+    final statements = <String>[];
+
+    // 1. Define table
+    statements.add(generateDefineTable(table));
+
+    // 2. Define all fields
+    for (final entry in table.fields.entries) {
+      final fieldName = entry.key;
+      final fieldDef = entry.value;
+      statements.add(generateDefineField(table.tableName, fieldName, fieldDef));
+    }
+
+    // 3. Define regular indexes (fields marked with indexed: true)
+    for (final entry in table.fields.entries) {
+      final fieldName = entry.key;
+      final fieldDef = entry.value;
+      if (fieldDef.indexed) {
+        statements.add(generateDefineIndex(table.tableName, fieldName));
+      }
+    }
+
+    // 4. Define vector indexes
+    if (table.vectorIndexes != null) {
+      for (final index in table.vectorIndexes!) {
+        statements.add(index.toSurrealQL());
+      }
+    }
+
+    return statements;
+  }
+
   /// Generates a REMOVE TABLE statement.
   ///
   /// Creates a SurrealQL statement to remove a table and all its data.
@@ -438,6 +545,62 @@ class DdlGenerator {
   String generateRemoveIndex(String tableName, String fieldName) {
     final indexName = 'idx_${tableName}_$fieldName';
     return 'REMOVE INDEX $indexName ON $tableName';
+  }
+
+  /// Generates a REMOVE INDEX statement for a vector index.
+  ///
+  /// Creates a SurrealQL statement to remove a vector index by name.
+  ///
+  /// [tableName] - The name of the table
+  /// [indexName] - The name of the vector index to remove
+  ///
+  /// Returns a REMOVE INDEX statement.
+  ///
+  /// Example:
+  /// ```dart
+  /// print(generator.generateRemoveVectorIndex('documents', 'idx_embedding'));
+  /// // Output: REMOVE INDEX idx_embedding ON documents;
+  /// ```
+  String generateRemoveVectorIndex(String tableName, String indexName) {
+    return 'REMOVE INDEX $indexName ON $tableName';
+  }
+
+  /// Generates statements to rebuild a vector index (drop + recreate).
+  ///
+  /// Produces two statements: first a REMOVE INDEX statement to drop the
+  /// existing index, then a DEFINE INDEX statement to recreate it with
+  /// the same configuration.
+  ///
+  /// [index] - The vector index definition to rebuild
+  ///
+  /// Returns a list of two statements: [REMOVE INDEX, DEFINE INDEX]
+  ///
+  /// Example:
+  /// ```dart
+  /// final index = IndexDefinition(
+  ///   indexName: 'idx_embedding',
+  ///   tableName: 'documents',
+  ///   fieldName: 'embedding',
+  ///   distanceMetric: DistanceMetric.cosine,
+  ///   dimensions: 768,
+  /// );
+  /// final statements = generator.generateRebuildVectorIndex(index);
+  /// // Returns:
+  /// // [
+  /// //   'REMOVE INDEX idx_embedding ON documents',
+  /// //   'DEFINE INDEX idx_embedding ON documents FIELDS embedding MTREE DISTANCE COSINE DIMENSION 768'
+  /// // ]
+  /// ```
+  List<String> generateRebuildVectorIndex(IndexDefinition index) {
+    final statements = <String>[];
+
+    // 1. Drop the existing index
+    statements.add(generateRemoveVectorIndex(index.tableName, index.indexName));
+
+    // 2. Recreate the index
+    statements.add(index.toSurrealQL());
+
+    return statements;
   }
 
   /// Generates a SurrealDB type string from a SurrealType.

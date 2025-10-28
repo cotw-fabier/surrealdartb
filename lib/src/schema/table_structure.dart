@@ -6,6 +6,7 @@ library;
 
 import '../exceptions.dart';
 import '../types/vector_value.dart';
+import '../vector/index_definition.dart';
 import 'surreal_types.dart';
 
 /// Represents a table schema with field definitions and validation logic.
@@ -21,6 +22,7 @@ import 'surreal_types.dart';
 /// - **Vector Validation**: Validate vector dimensions and normalization
 /// - **Nested Schemas**: Support complex nested object structures
 /// - **Type Safety**: Leverage Dart's type system for schema definitions
+/// - **Vector Indexes**: Support vector similarity search indexes
 ///
 /// ## Basic Usage
 ///
@@ -86,6 +88,7 @@ class TableStructure {
   ///
   /// [tableName] - The name of the table (must be non-empty and valid identifier)
   /// [fields] - Map of field names to their definitions
+  /// [vectorIndexes] - Optional list of vector index definitions
   ///
   /// Throws [ArgumentError] if [tableName] is empty or contains invalid characters.
   ///
@@ -97,7 +100,7 @@ class TableStructure {
   ///   'created_at': FieldDefinition(DatetimeType()),
   /// });
   /// ```
-  TableStructure(this.tableName, this.fields) {
+  TableStructure(this.tableName, this.fields, {this.vectorIndexes}) {
     if (tableName.trim().isEmpty) {
       throw ArgumentError('Table name cannot be empty');
     }
@@ -120,6 +123,29 @@ class TableStructure {
   ///
   /// Each entry defines the type and constraints for a field in the table.
   final Map<String, FieldDefinition> fields;
+
+  /// Optional list of vector index definitions.
+  ///
+  /// Vector indexes enable efficient similarity search on vector fields.
+  /// Each index definition specifies the field to index, distance metric,
+  /// index type, and optional parameters.
+  ///
+  /// Example:
+  /// ```dart
+  /// final table = TableStructure('documents', {
+  ///   'embedding': FieldDefinition(VectorType.f32(768)),
+  /// }, vectorIndexes: [
+  ///   IndexDefinition(
+  ///     indexName: 'idx_embedding',
+  ///     tableName: 'documents',
+  ///     fieldName: 'embedding',
+  ///     distanceMetric: DistanceMetric.cosine,
+  ///     dimensions: 768,
+  ///     indexType: IndexType.mtree,
+  ///   ),
+  /// ]);
+  /// ```
+  List<IndexDefinition>? vectorIndexes;
 
   /// Validates data against the table schema.
   ///

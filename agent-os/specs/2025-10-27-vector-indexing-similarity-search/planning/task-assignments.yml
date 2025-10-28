@@ -1,0 +1,12 @@
+task_assignments:
+  - task_group: "Task Group 1: Vector Index Type System"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 2: Index Schema and DDL Generation"
+    assigned_subagent: "database-engineer"
+
+  - task_group: "Task Group 3: Search Methods and Query Builder"
+    assigned_subagent: "api-engineer"
+
+  - task_group: "Task Group 4: Test Review & Gap Analysis"
+    assigned_subagent: "testing-engineer"
