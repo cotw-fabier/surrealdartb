@@ -172,6 +172,8 @@ import 'orm/include_spec.dart';
 import 'types/vector_value.dart';
 import 'vector/distance_metric.dart';
 import 'vector/similarity_result.dart';
+import 'vector/index_type.dart';
+import 'vector/index_definition.dart';
 
 /// High-level asynchronous database client for SurrealDB.
 ///
@@ -1838,6 +1840,26 @@ class Database {
   /// This method searches for similar vectors in a table using the specified
   /// distance metric and returns results ordered by similarity (distance).
   ///
+  /// ## CRITICAL: Vector Storage Requirements
+  ///
+  /// **SCHEMAFULL tables MUST define vector fields as `array<float>` or `array<number>`!**
+  ///
+  /// Using just `array` will cause vectors to be stored as empty arrays.
+  ///
+  /// ✅ Correct:
+  /// ```
+  /// DEFINE TABLE docs SCHEMAFULL;
+  /// DEFINE FIELD embedding ON docs TYPE array<float>;
+  /// ```
+  ///
+  /// ❌ Incorrect (vectors will be empty):
+  /// ```
+  /// DEFINE TABLE docs SCHEMAFULL;
+  /// DEFINE FIELD embedding ON docs TYPE array;
+  /// ```
+  ///
+  /// For schemaless tables, vectors are stored correctly without type specification.
+  ///
   /// ## Distance Metrics
   ///
   /// - **Euclidean**: Straight-line distance (L2 norm) - best for general-purpose
@@ -1927,10 +1949,20 @@ class Database {
       await set(vectorParamName, queryVector.toJson());
 
       try {
-        // Build SurrealQL query
+        // Build SurrealQL query using direct distance function
+        // Note: KNN operator syntax is the modern approach but may not be supported
+        // in all embedded SurrealDB versions yet. Using direct function calls ensures
+        // compatibility while providing the same functionality.
         final queryBuffer = StringBuffer();
+
+        // Build distance function call
+        // Minkowski requires a third parameter (p value), default to 3
+        final distanceFunction = metric == DistanceMetric.minkowski
+            ? '${metric.toFullSurrealQLFunction()}($field, \$$vectorParamName, 3)'
+            : '${metric.toFullSurrealQLFunction()}($field, \$$vectorParamName)';
+
         queryBuffer.write(
-          'SELECT *, ${metric.toFullSurrealQLFunction()}($field, \$$vectorParamName) AS distance FROM $table',
+          'SELECT *, $distanceFunction AS distance FROM $table',
         );
 
         // Add WHERE clause if provided
@@ -2097,6 +2129,226 @@ class Database {
       }
 
       return results;
+    });
+  }
+
+  // ============================================================================
+  // Vector Index Management
+  // ============================================================================
+
+  /// Creates a vector index for efficient similarity search.
+  ///
+  /// Vector indexes enable fast nearest neighbor searches on high-dimensional
+  /// vector embeddings. Without an index, searches perform brute-force comparison
+  /// against all records, which is slow for large datasets.
+  ///
+  /// ## IMPORTANT: Vector Field Type Requirement
+  ///
+  /// Before creating an index, ensure your vector field is defined as `array<float>`
+  /// or `array<number>` in SCHEMAFULL tables. Using just `array` will cause vectors
+  /// to be stored as empty arrays and indexing will fail.
+  ///
+  /// ## Index Types
+  ///
+  /// - **HNSW**: Best for large datasets (>100,000 vectors). Fast approximate search.
+  /// - **M-Tree**: Best for medium datasets (1,000-100,000 vectors). Balanced performance.
+  /// - **FLAT**: Best for small datasets (<1,000 vectors). Exact search, no index overhead.
+  /// - **AUTO**: Automatically selects index type based on dataset size.
+  ///
+  /// ## Parameters
+  ///
+  /// - [table] - Name of the table containing the vector field
+  /// - [field] - Name of the vector field to index
+  /// - [dimensions] - Number of dimensions in the vectors
+  /// - [indexType] - Type of index structure (defaults to AUTO)
+  /// - [metric] - Distance metric for similarity calculations (defaults to EUCLIDEAN)
+  /// - [indexName] - Optional custom index name (auto-generated if not provided)
+  /// - [hnswM] - HNSW parameter: connections per node (optional, HNSW only)
+  /// - [hnswEfc] - HNSW parameter: construction candidate list size (optional, HNSW only)
+  /// - [mtreeCapacity] - M-Tree parameter: node capacity (optional, M-Tree only)
+  ///
+  /// ## Returns
+  ///
+  /// The name of the created index.
+  ///
+  /// ## Throws
+  ///
+  /// - [StateError] if database is closed
+  /// - [ArgumentError] if parameters are invalid
+  /// - [QueryException] if index creation fails
+  ///
+  /// ## Example
+  ///
+  /// ```dart
+  /// // Create HNSW index for OpenAI ada-002 embeddings
+  /// await db.createVectorIndex(
+  ///   table: 'documents',
+  ///   field: 'embedding',
+  ///   dimensions: 1536,
+  ///   indexType: IndexType.hnsw,
+  ///   metric: DistanceMetric.cosine,
+  ///   hnswM: 16,
+  ///   hnswEfc: 200,
+  /// );
+  ///
+  /// // Auto-select index type based on dataset size
+  /// await db.createVectorIndex(
+  ///   table: 'products',
+  ///   field: 'image_vector',
+  ///   dimensions: 512,
+  ///   indexType: IndexType.auto,
+  ///   metric: DistanceMetric.euclidean,
+  /// );
+  /// ```
+  Future<String> createVectorIndex({
+    required String table,
+    required String field,
+    required int dimensions,
+    IndexType indexType = IndexType.auto,
+    DistanceMetric metric = DistanceMetric.euclidean,
+    String? indexName,
+    int? hnswM,
+    int? hnswEfc,
+    int? mtreeCapacity,
+  }) async {
+    _ensureNotClosed();
+
+    if (table.isEmpty) {
+      throw ArgumentError.value(table, 'table', 'Table name cannot be empty');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Field name cannot be empty');
+    }
+
+    return Future(() async {
+      // Generate index name if not provided
+      final effectiveIndexName = indexName ?? 'idx_${table}_${field}_vector';
+
+      // Create index definition
+      final indexDef = IndexDefinition(
+        indexName: effectiveIndexName,
+        tableName: table,
+        fieldName: field,
+        distanceMetric: metric,
+        indexType: indexType,
+        dimensions: dimensions,
+        m: hnswM,
+        efc: hnswEfc,
+        capacity: mtreeCapacity,
+      );
+
+      // Generate and execute DEFINE INDEX statement
+      final ddl = indexDef.toSurrealQL();
+      await queryQL(ddl);
+
+      return effectiveIndexName;
+    });
+  }
+
+  /// Checks if a vector index exists on a specific field.
+  ///
+  /// Queries the database information schema to determine if a vector index
+  /// exists for the specified table and field.
+  ///
+  /// ## Parameters
+  ///
+  /// - [table] - Name of the table to check
+  /// - [field] - Name of the field to check for an index
+  ///
+  /// ## Returns
+  ///
+  /// `true` if a vector index exists on the field, `false` otherwise.
+  ///
+  /// ## Throws
+  ///
+  /// - [StateError] if database is closed
+  /// - [ArgumentError] if table or field name is empty
+  /// - [QueryException] if the query fails
+  ///
+  /// ## Example
+  ///
+  /// ```dart
+  /// if (!await db.hasVectorIndex('documents', 'embedding')) {
+  ///   await db.createVectorIndex(
+  ///     table: 'documents',
+  ///     field: 'embedding',
+  ///     dimensions: 384,
+  ///   );
+  /// }
+  /// ```
+  Future<bool> hasVectorIndex(String table, String field) async {
+    _ensureNotClosed();
+
+    if (table.isEmpty) {
+      throw ArgumentError.value(table, 'table', 'Table name cannot be empty');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Field name cannot be empty');
+    }
+
+    return Future(() async {
+      // Query information schema for indexes on this field
+      final response = await queryQL('''
+        SELECT * FROM information_schema.indexes
+        WHERE table = '$table' AND fields CONTAINS '$field'
+      ''');
+
+      final results = response.getResults();
+      return results.isNotEmpty;
+    });
+  }
+
+  /// Drops a vector index from a table field.
+  ///
+  /// Removes the specified index from the database. This does not affect
+  /// the underlying data, only the index structure used for optimization.
+  ///
+  /// ## Parameters
+  ///
+  /// - [table] - Name of the table containing the index
+  /// - [field] - Name of the field with the index
+  /// - [indexName] - Optional specific index name to drop. If not provided,
+  ///   uses the auto-generated name pattern 'idx_{table}_{field}_vector'
+  ///
+  /// ## Throws
+  ///
+  /// - [StateError] if database is closed
+  /// - [ArgumentError] if table or field name is empty
+  /// - [QueryException] if the drop operation fails
+  ///
+  /// ## Example
+  ///
+  /// ```dart
+  /// // Drop auto-generated index
+  /// await db.dropVectorIndex('documents', 'embedding');
+  ///
+  /// // Drop custom-named index
+  /// await db.dropVectorIndex(
+  ///   'documents',
+  ///   'embedding',
+  ///   indexName: 'my_custom_index',
+  /// );
+  /// ```
+  Future<void> dropVectorIndex(
+    String table,
+    String field, {
+    String? indexName,
+  }) async {
+    _ensureNotClosed();
+
+    if (table.isEmpty) {
+      throw ArgumentError.value(table, 'table', 'Table name cannot be empty');
+    }
+    if (field.isEmpty) {
+      throw ArgumentError.value(field, 'field', 'Field name cannot be empty');
+    }
+
+    return Future(() async {
+      // Use provided index name or generate default
+      final effectiveIndexName = indexName ?? 'idx_${table}_${field}_vector';
+
+      // Execute REMOVE INDEX statement
+      await queryQL('REMOVE INDEX $effectiveIndexName ON $table');
     });
   }
 

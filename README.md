@@ -1163,22 +1163,205 @@ await db.create('documents', {
 });
 ```
 
-### Vector Storage for AI/ML
+### Vector Storage & Similarity Search for AI/ML
+
+SurrealDB provides full support for vector embeddings and similarity search, perfect for semantic search, recommendations, and AI-powered applications.
+
+#### IMPORTANT: Vector Field Type
+
+**For SCHEMAFULL tables, you MUST define vector fields as `array<float>` or `array<number>`:**
 
 ```dart
-// Store embeddings for semantic search
-await db.create('documents', {
+// ✅ Correct - vectors will be stored properly
+await db.queryQL('''
+  DEFINE TABLE documents SCHEMAFULL;
+  DEFINE FIELD title ON documents TYPE string;
+  DEFINE FIELD embedding ON documents TYPE array<float>;
+''');
+
+// ❌ Incorrect - vectors will be stored as empty arrays!
+await db.queryQL('''
+  DEFINE FIELD embedding ON documents TYPE array;  // Don't use just 'array'
+''');
+```
+
+#### Basic Vector Similarity Search
+
+```dart
+import 'package:surrealdartb/surrealdartb.dart';
+
+// 1. Create table with proper vector field type
+await db.queryQL('''
+  DEFINE TABLE documents SCHEMAFULL;
+  DEFINE FIELD title ON documents TYPE string;
+  DEFINE FIELD content ON documents TYPE string;
+  DEFINE FIELD embedding ON documents TYPE array<float>;  // Critical!
+''');
+
+// 2. Store documents with embeddings
+final doc1Embedding = VectorValue.f32([0.23, 0.45, 0.12, 0.67]);
+await db.createQL('documents', {
   'title': 'Machine Learning Guide',
   'content': 'Introduction to ML concepts...',
-  'embedding': [0.23, 0.45, 0.12, ...], // 384-dimensional vector
-  'category': 'education',
+  'embedding': doc1Embedding.toJson(),
 });
 
-// Query with vector similarity (future feature)
-// final similar = await db.query('''
-//   SELECT * FROM documents
-//   WHERE vector::similarity(embedding, $target_vector) > 0.8
-// ''', {'target_vector': myVector});
+final doc2Embedding = VectorValue.f32([0.89, 0.12, 0.45, 0.23]);
+await db.createQL('documents', {
+  'title': 'Deep Learning Basics',
+  'content': 'Neural networks explained...',
+  'embedding': doc2Embedding.toJson(),
+});
+
+// 3. Search for similar documents
+final queryEmbedding = VectorValue.f32([0.25, 0.42, 0.15, 0.65]);
+final results = await db.searchSimilar(
+  table: 'documents',
+  field: 'embedding',
+  queryVector: queryEmbedding,
+  metric: DistanceMetric.cosine,  // Best for text embeddings
+  limit: 10,
+);
+
+// 4. Process results (ordered by similarity)
+for (final result in results) {
+  print('Title: ${result.record['title']}');
+  print('Similarity distance: ${result.distance}');
+  print('Content: ${result.record['content']}\n');
+}
+```
+
+#### Distance Metrics
+
+Choose the right metric for your use case:
+
+```dart
+// Cosine similarity - best for text embeddings
+final textResults = await db.searchSimilar(
+  table: 'documents',
+  field: 'embedding',
+  queryVector: queryVector,
+  metric: DistanceMetric.cosine,
+  limit: 10,
+);
+
+// Euclidean distance - best for general-purpose similarity
+final generalResults = await db.searchSimilar(
+  table: 'images',
+  field: 'features',
+  queryVector: imageFeatures,
+  metric: DistanceMetric.euclidean,
+  limit: 5,
+);
+
+// Manhattan distance - best for high-dimensional spaces
+final highDimResults = await db.searchSimilar(
+  table: 'products',
+  field: 'attributes',
+  queryVector: productVector,
+  metric: DistanceMetric.manhattan,
+  limit: 10,
+);
+```
+
+#### Filtered Similarity Search
+
+Combine vector search with filtering:
+
+```dart
+// Search for similar documents with specific status
+final filtered = await db.searchSimilar(
+  table: 'documents',
+  field: 'embedding',
+  queryVector: queryVector,
+  metric: DistanceMetric.cosine,
+  limit: 10,
+  where: EqualsCondition('status', 'published'),
+);
+
+// Complex filtering with AND/OR conditions
+final complex = await db.searchSimilar(
+  table: 'products',
+  field: 'features',
+  queryVector: queryVector,
+  metric: DistanceMetric.euclidean,
+  limit: 20,
+  where: (EqualsCondition('category', 'electronics') &
+         GreaterThanCondition('price', 100)) |
+         EqualsCondition('featured', true),
+);
+```
+
+#### Batch Similarity Search
+
+Search with multiple query vectors at once:
+
+```dart
+final queryVectors = [
+  VectorValue.f32([0.1, 0.2, 0.3]),
+  VectorValue.f32([0.4, 0.5, 0.6]),
+  VectorValue.f32([0.7, 0.8, 0.9]),
+];
+
+final batchResults = await db.batchSearchSimilar(
+  table: 'documents',
+  field: 'embedding',
+  queryVectors: queryVectors,
+  metric: DistanceMetric.cosine,
+  limit: 5,
+);
+
+// Results mapped by input index
+for (var i = 0; i < queryVectors.length; i++) {
+  print('Results for query vector $i:');
+  for (final result in batchResults[i]!) {
+    print('  - ${result.record['title']}: ${result.distance}');
+  }
+}
+```
+
+#### Vector Indexes for Performance
+
+Create indexes for faster similarity search on large datasets:
+
+```dart
+// Create HNSW index for large datasets (>100K vectors)
+await db.createVectorIndex(
+  table: 'documents',
+  field: 'embedding',
+  dimensions: 384,  // Match your embedding dimensions
+  indexType: IndexType.hnsw,
+  metric: DistanceMetric.cosine,
+  hnswM: 16,       // Connections per node (higher = better recall, more memory)
+  hnswEfc: 200,    // Construction quality (higher = better quality, slower build)
+);
+
+// Create M-Tree index for medium datasets (1K-100K vectors)
+await db.createVectorIndex(
+  table: 'products',
+  field: 'features',
+  dimensions: 128,
+  indexType: IndexType.mtree,
+  metric: DistanceMetric.euclidean,
+  mtreeCapacity: 40,
+);
+
+// Auto-select index type based on dataset size
+await db.createVectorIndex(
+  table: 'images',
+  field: 'features',
+  dimensions: 512,
+  indexType: IndexType.auto,  // Chooses best index automatically
+  metric: DistanceMetric.euclidean,
+);
+
+// Check if index exists
+if (await db.hasVectorIndex('documents', 'embedding')) {
+  print('Index exists!');
+}
+
+// Drop index
+await db.dropVectorIndex('documents', 'embedding');
 ```
 
 ### Graph Relationships
@@ -1352,7 +1535,6 @@ Current version (1.2.0) focuses on core embedded database functionality with tab
 
 **Not Yet Supported:**
 - Remote database connections (WebSocket/HTTP)
-- Vector indexing configuration (vector storage works, similarity search pending)
 - Advanced transaction isolation levels
 - Server-side live query subscriptions
 

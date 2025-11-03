@@ -11,7 +11,10 @@
       "Bash(test:*)",
       "Bash(dart test:*)",
       "Bash(jobs)",
-      "Bash(dart analyze:*)"
+      "Bash(dart analyze:*)",
+      "Bash(cargo run:*)",
+      "Bash(xargs:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

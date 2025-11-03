@@ -70,15 +70,47 @@ extension DistanceMetricExtension on DistanceMetric {
 
   /// Returns the full SurrealQL function path.
   ///
-  /// Returns the complete function name including the `vector::distance::`
-  /// namespace prefix for use in SurrealQL queries.
+  /// Returns the complete function name including the appropriate namespace
+  /// prefix (`vector::distance::` or `vector::similarity::`) for use in
+  /// SurrealQL queries.
+  ///
+  /// Note: Cosine uses the similarity namespace, while others use distance.
   ///
   /// Example:
   /// ```dart
-  /// final metric = DistanceMetric.cosine;
-  /// print(metric.toFullSurrealQLFunction()); // "vector::distance::cosine"
+  /// final metric1 = DistanceMetric.euclidean;
+  /// print(metric1.toFullSurrealQLFunction()); // "vector::distance::euclidean"
+  ///
+  /// final metric2 = DistanceMetric.cosine;
+  /// print(metric2.toFullSurrealQLFunction()); // "vector::similarity::cosine"
   /// ```
   String toFullSurrealQLFunction() {
+    // Cosine is a similarity metric, not a distance metric
+    if (this == DistanceMetric.cosine) {
+      return 'vector::similarity::${toSurrealQLFunction()}';
+    }
     return 'vector::distance::${toSurrealQLFunction()}';
+  }
+
+  /// Returns the uppercase metric name for use in KNN operator.
+  ///
+  /// The KNN operator requires uppercase metric names when specifying
+  /// the distance function explicitly in queries.
+  ///
+  /// Example:
+  /// ```dart
+  /// final metric = DistanceMetric.euclidean;
+  /// print(metric.toKnnOperatorName()); // "EUCLIDEAN"
+  ///
+  /// // Used in query:
+  /// // WHERE embedding <|10, EUCLIDEAN|> $queryVector
+  /// ```
+  String toKnnOperatorName() {
+    return switch (this) {
+      DistanceMetric.euclidean => 'EUCLIDEAN',
+      DistanceMetric.cosine => 'COSINE',
+      DistanceMetric.manhattan => 'MANHATTAN',
+      DistanceMetric.minkowski => 'MINKOWSKI',
+    };
   }
 }

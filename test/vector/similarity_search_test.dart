@@ -24,10 +24,13 @@ void main() {
       );
 
       // Create test table with vector field
+      // IMPORTANT: Must use array<float> or array<number> to preserve vector values
+      // Using just 'array' will store vectors as empty arrays!
       await db.queryQL('''
         DEFINE TABLE documents SCHEMAFULL;
         DEFINE FIELD title ON documents TYPE string;
-        DEFINE FIELD embedding ON documents TYPE array;
+        DEFINE FIELD embedding ON documents TYPE array<float>;
+        DEFINE FIELD status ON documents TYPE option<string>;
       ''');
     });
 
@@ -75,7 +78,7 @@ void main() {
       for (var i = 1; i < results.length; i++) {
         expect(results[i].distance, greaterThanOrEqualTo(results[i - 1].distance));
       }
-    }, skip: 'SurrealDB embedded version does not yet support vector::distance::* functions');
+    });
 
     test('searchSimilar() with WHERE conditions filters results', () async {
       // Insert test documents
@@ -109,7 +112,7 @@ void main() {
       for (final result in results) {
         expect(result.record['status'], equals('active'));
       }
-    }, skip: 'SurrealDB embedded version does not yet support vector::distance::* functions');
+    });
 
     test('searchSimilar() works with all distance metrics', () async {
       // Insert test document
@@ -134,7 +137,7 @@ void main() {
         expect(results, isNotEmpty, reason: 'Metric $metric should return results');
         expect(results.first.distance, isA<double>());
       }
-    }, skip: 'SurrealDB embedded version does not yet support vector::distance::* functions');
+    });
 
     test('searchSimilar() parses results into SimilarityResult objects', () async {
       // Insert test document
@@ -158,7 +161,7 @@ void main() {
       expect(results.first.record, isA<Map<String, dynamic>>());
       expect(results.first.record['title'], equals('Test Doc'));
       expect(results.first.distance, isA<double>());
-    }, skip: 'SurrealDB embedded version does not yet support vector::distance::* functions');
+    });
 
     test('batchSearchSimilar() returns results mapped by input index', () async {
       // Insert test documents
@@ -196,7 +199,7 @@ void main() {
       // Each result list should contain similarity results
       expect(results[0]!.first, isA<SimilarityResult<Map<String, dynamic>>>());
       expect(results[1]!.first, isA<SimilarityResult<Map<String, dynamic>>>());
-    }, skip: 'SurrealDB embedded version does not yet support vector::distance::* functions');
+    });
 
     test('searchSimilar() validates dimension mismatch', () async {
       // Insert document with 3D vector
