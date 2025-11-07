@@ -14,7 +14,10 @@
       "Bash(dart analyze:*)",
       "Bash(cargo run:*)",
       "Bash(xargs:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(python:*)",
+      "Bash(/Users/fabier/Documents/code/surrealdartb/docs/README.md)"
     ],
     "deny": [],
     "ask": []
