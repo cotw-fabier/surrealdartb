@@ -17,7 +17,9 @@
       "Bash(tree:*)",
       "WebFetch(domain:github.com)",
       "Bash(python:*)",
-      "Bash(/Users/fabier/Documents/code/surrealdartb/docs/README.md)"
+      "Bash(/Users/fabier/Documents/code/surrealdartb/docs/README.md)",
+      "Bash(dart pub get:*)",
+      "Bash(dart pub run build_runner:*)"
     ],
     "deny": [],
     "ask": []

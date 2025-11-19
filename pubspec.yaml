@@ -17,10 +17,6 @@ dependencies:
 dev_dependencies:
   lints: ^6.0.0
   test: ^1.25.6
-  hooks: ^0.20.4
+  hooks: ^1.0.0
   build_runner: ^2.4.0
-  native_toolchain_rs:
-    git:
-      url: https://github.com/GregoryConrad/native_toolchain_rs
-      ref: 34fc6155224d844f70b3fc631fb0b0049c4d51c6
-      path: native_toolchain_rs
+  native_toolchain_rs: ^1.0.0
