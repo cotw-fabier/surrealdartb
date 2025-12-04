@@ -19,7 +19,11 @@
       "Bash(python:*)",
       "Bash(/Users/fabier/Documents/code/surrealdartb/docs/README.md)",
       "Bash(dart pub get:*)",
-      "Bash(dart pub run build_runner:*)"
+      "Bash(dart pub run build_runner:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.rs)",
+      "Bash(git log:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []

@@ -19,12 +19,12 @@ void main() {
 
     test('rocksdb backend generates correct endpoint with path', () {
       final endpoint = StorageBackend.rocksdb.toEndpoint('/data/mydb');
-      expect(endpoint, equals('file:///data/mydb'));
+      expect(endpoint, equals('rocksdb:///data/mydb'));
     });
 
     test('rocksdb backend normalizes path without leading slash', () {
       final endpoint = StorageBackend.rocksdb.toEndpoint('data/mydb');
-      expect(endpoint, equals('file:///data/mydb'));
+      expect(endpoint, equals('rocksdb:///data/mydb'));
     });
 
     test('rocksdb backend throws without path', () {

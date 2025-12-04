@@ -161,6 +161,25 @@ Implement AI-powered similarity search:
 
 ---
 
+### **[06. Best Practices Guide](06-best-practices.md)**
+
+A comprehensive, self-contained guide for building applications the right way:
+
+- ORM-first philosophy and why it matters
+- Complete project setup with Flutter path_provider
+- Model definition patterns and validation
+- Relationship definitions (one-to-one, one-to-many, graph)
+- Code generation workflow
+- Type-safe queries with the query builder
+- Index optimization for performance
+- Vector operations patterns
+- Complete application example with service layer
+- Common pitfalls to avoid
+
+**Recommended for all developers**
+
+---
+
 ## Getting Help
 
 - **Issues**: Report bugs or request features on [GitHub Issues](https://github.com/yourusername/surrealdartb/issues)

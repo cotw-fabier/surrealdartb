@@ -49,12 +49,8 @@ dependencies:
 
 dev_dependencies:
   build_runner: ^2.4.0  # For code generation
-  hooks: ^0.20.4
-  native_toolchain_rs:
-    git:
-      url: https://github.com/GregoryConrad/native_toolchain_rs
-      ref: 34fc6155224d844f70b3fc631fb0b0049c4d51c6
-      path: native_toolchain_rs
+  hooks: ^1.0.0  # Required for native asset build hooks
+  native_toolchain_rs: ^1.0.0  # Rust-to-Dart FFI builder
 ```
 
 ### Requirements

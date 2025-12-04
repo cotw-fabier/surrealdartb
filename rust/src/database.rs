@@ -59,6 +59,34 @@ pub extern "C" fn db_new(endpoint: *const c_char) -> *mut Database {
                 Box::into_raw(database)
             }
             Err(e) => {
+                let error_msg = e.to_string().to_lowercase();
+
+                // If database exists or has lock issue, wait and retry
+                // This handles the case where the database already exists at the path
+                if error_msg.contains("already exists") ||
+                   error_msg.contains("lock") ||
+                   error_msg.contains("resource busy") {
+
+                    warn!("Database exists at path, retrying connection: {}", e);
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+
+                    // Retry connection
+                    match runtime.block_on(async { connect(endpoint_str).await }) {
+                        Ok(db) => {
+                            info!("Successfully opened existing database");
+                            let database = Box::new(Database { inner: db });
+                            return Box::into_raw(database);
+                        }
+                        Err(retry_err) => {
+                            set_last_error(&format!(
+                                "Failed to open database: {}. Original error: {}",
+                                retry_err, e
+                            ));
+                            return std::ptr::null_mut();
+                        }
+                    }
+                }
+
                 set_last_error(&format!("Failed to create database: {}", e));
                 std::ptr::null_mut()
             }

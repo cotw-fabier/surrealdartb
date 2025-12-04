@@ -33,7 +33,7 @@ enum StorageBackend {
   /// - Local data persistence
   /// - Embedded database scenarios
   ///
-  /// Endpoint format: "file:///path/to/database"
+  /// Endpoint format: "rocksdb:///path/to/database"
   ///
   /// Note: Requires a valid file path to be specified.
   rocksdb,
@@ -58,7 +58,7 @@ extension StorageBackendExt on StorageBackend {
   /// // Returns: "mem://"
   ///
   /// final fileEndpoint = StorageBackend.rocksdb.toEndpoint('/data/mydb');
-  /// // Returns: "file:///data/mydb"
+  /// // Returns: "rocksdb:///data/mydb"
   /// ```
   String toEndpoint([String? path]) {
     switch (this) {
@@ -74,7 +74,7 @@ extension StorageBackendExt on StorageBackend {
         }
         // Ensure path starts with /
         final normalizedPath = path.startsWith('/') ? path : '/$path';
-        return 'file://$normalizedPath';
+        return 'rocksdb://$normalizedPath';
     }
   }
 
