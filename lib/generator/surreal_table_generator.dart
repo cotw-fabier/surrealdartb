@@ -818,6 +818,32 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
         } else {
           buffer.writeln("        $fieldName: Duration(microseconds: map['$fieldName'] as int),");
         }
+      } else if (_isListType(field.dartType)) {
+        // List field - need to cast from List<dynamic>
+        final elementType = _getListElementType(field.dartType);
+        if (field.isOptional) {
+          buffer.writeln("        $fieldName: map['$fieldName'] != null ? (map['$fieldName'] as List<dynamic>).cast<$elementType>() : null,");
+        } else {
+          buffer.writeln("        $fieldName: (map['$fieldName'] as List<dynamic>).cast<$elementType>(),");
+        }
+      } else if (_isMapType(field.dartType)) {
+        // Map field - need to cast from Map<String, dynamic>
+        final valueType = _getMapValueType(field.dartType);
+        if (valueType == 'dynamic') {
+          // Map<String, dynamic> - cast directly
+          if (field.isOptional) {
+            buffer.writeln("        $fieldName: map['$fieldName'] != null ? Map<String, dynamic>.from(map['$fieldName'] as Map) : null,");
+          } else {
+            buffer.writeln("        $fieldName: Map<String, dynamic>.from(map['$fieldName'] as Map),");
+          }
+        } else {
+          // Map<String, T> - need element-wise casting
+          if (field.isOptional) {
+            buffer.writeln("        $fieldName: map['$fieldName'] != null ? (map['$fieldName'] as Map).map((k, v) => MapEntry(k as String, v as $valueType)) : null,");
+          } else {
+            buffer.writeln("        $fieldName: (map['$fieldName'] as Map).map((k, v) => MapEntry(k as String, v as $valueType)),");
+          }
+        }
       } else {
         // Simple field
         if (field.isOptional) {
@@ -969,6 +995,38 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     }
 
     return typeName;
+  }
+
+  /// Checks if a DartType is a List type.
+  bool _isListType(DartType? dartType) {
+    if (dartType == null) return false;
+    final typeName = dartType.element?.name;
+    return typeName == 'List';
+  }
+
+  /// Gets the element type of a List type.
+  String _getListElementType(DartType? dartType) {
+    if (dartType == null) return 'dynamic';
+    if (dartType is InterfaceType && dartType.typeArguments.isNotEmpty) {
+      return _getDartTypeName(dartType.typeArguments.first);
+    }
+    return 'dynamic';
+  }
+
+  /// Checks if a DartType is a Map type.
+  bool _isMapType(DartType? dartType) {
+    if (dartType == null) return false;
+    final typeName = dartType.element?.name;
+    return typeName == 'Map';
+  }
+
+  /// Gets the value type of a Map type.
+  String _getMapValueType(DartType? dartType) {
+    if (dartType == null) return 'dynamic';
+    if (dartType is InterfaceType && dartType.typeArguments.length >= 2) {
+      return _getDartTypeName(dartType.typeArguments[1]);
+    }
+    return 'dynamic';
   }
 
   // ============================================================================
