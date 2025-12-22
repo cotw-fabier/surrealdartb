@@ -23,7 +23,11 @@
       "WebSearch",
       "WebFetch(domain:docs.rs)",
       "Bash(git log:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []

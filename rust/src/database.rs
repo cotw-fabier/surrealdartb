@@ -4,6 +4,7 @@ use surrealdb::Surreal;
 use surrealdb::engine::any::{Any, connect};
 use crate::error::set_last_error;
 use crate::runtime::get_runtime;
+use crate::connection_registry::{extract_rocksdb_path, register_connection, unregister_connection, close_existing_connection};
 use log::{info, debug, warn, error};
 
 /// Opaque handle for SurrealDB database instance
@@ -12,6 +13,9 @@ use log::{info, debug, warn, error};
 /// Memory management: Created via db_new(), destroyed via db_close()
 pub struct Database {
     pub inner: Surreal<Any>,
+    /// The original endpoint used to create this connection.
+    /// Used for unregistering from the connection registry on close.
+    pub endpoint: Option<String>,
 }
 
 /// Create a new SurrealDB database instance
@@ -50,13 +54,34 @@ pub extern "C" fn db_new(endpoint: *const c_char) -> *mut Database {
             }
         };
 
+        // For RocksDB endpoints, check if there's an existing connection and close it.
+        // This handles the Flutter Hot Restart scenario where the old Dart isolate is gone
+        // but the Rust-side connection is still holding the file lock.
+        let rocksdb_path = extract_rocksdb_path(endpoint_str);
+        if let Some(ref path) = rocksdb_path {
+            info!("RocksDB endpoint detected, checking for existing connection at: {}", path);
+            close_existing_connection(path);
+            // Small delay to ensure RocksDB lock is fully released
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+
         let runtime = get_runtime();
         match runtime.block_on(async {
             connect(endpoint_str).await
         }) {
             Ok(db) => {
-                let database = Box::new(Database { inner: db });
-                Box::into_raw(database)
+                let database = Box::new(Database {
+                    inner: db,
+                    endpoint: Some(endpoint_str.to_string()),
+                });
+                let handle = Box::into_raw(database);
+
+                // Register the new connection in the registry
+                if let Some(path) = rocksdb_path {
+                    register_connection(path, handle);
+                }
+
+                handle
             }
             Err(e) => {
                 let error_msg = e.to_string().to_lowercase();
@@ -74,8 +99,18 @@ pub extern "C" fn db_new(endpoint: *const c_char) -> *mut Database {
                     match runtime.block_on(async { connect(endpoint_str).await }) {
                         Ok(db) => {
                             info!("Successfully opened existing database");
-                            let database = Box::new(Database { inner: db });
-                            return Box::into_raw(database);
+                            let database = Box::new(Database {
+                                inner: db,
+                                endpoint: Some(endpoint_str.to_string()),
+                            });
+                            let handle = Box::into_raw(database);
+
+                            // Register the new connection in the registry
+                            if let Some(ref path) = extract_rocksdb_path(endpoint_str) {
+                                register_connection(path.clone(), handle);
+                            }
+
+                            return handle;
                         }
                         Err(retry_err) => {
                             set_last_error(&format!(
@@ -474,6 +509,15 @@ pub extern "C" fn db_close(handle: *mut Database) {
             unsafe {
                 // Take ownership of the Database
                 let db = Box::from_raw(handle);
+
+                // Unregister from the connection registry before closing
+                // This must happen before drop so the path is still available
+                if let Some(ref endpoint) = db.endpoint {
+                    if let Some(path) = extract_rocksdb_path(endpoint) {
+                        debug!("Unregistering connection for path: {}", path);
+                        unregister_connection(&path);
+                    }
+                }
 
                 // Get the runtime to ensure async cleanup can complete
                 let runtime = get_runtime();

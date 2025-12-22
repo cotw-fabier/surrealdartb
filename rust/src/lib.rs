@@ -40,6 +40,7 @@ pub mod runtime;
 pub mod database;
 pub mod query;
 pub mod auth;
+pub mod connection_registry;
 // pub mod live_query;
 
 // Re-export main FFI functions for convenience

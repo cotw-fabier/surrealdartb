@@ -144,6 +144,50 @@ void main() {
       }
     });
 
+    test('hot restart simulation - new connection without closing old one succeeds', () async {
+      // This test simulates what happens during Flutter Hot Restart:
+      // 1. A database connection is created
+      // 2. The Dart isolate restarts (without explicit close)
+      // 3. A new connection is attempted to the same path
+      //
+      // The connection registry should automatically close the old connection
+      // before creating the new one, preventing lock errors.
+
+      // First connection - DO NOT CLOSE to simulate hot restart
+      final db1 = await Database.connect(
+        backend: StorageBackend.rocksdb,
+        path: dbPath,
+        namespace: 'test',
+        database: 'test',
+      );
+
+      // Add some data through first connection
+      await db1.createQL('hot_restart_test', {'created_by': 'db1', 'value': 1});
+
+      // Simulate hot restart: create new connection WITHOUT closing first one
+      // This should NOT throw "lock held by current process" error
+      final db2 = await Database.connect(
+        backend: StorageBackend.rocksdb,
+        path: dbPath,
+        namespace: 'test',
+        database: 'test',
+      );
+
+      try {
+        // New connection should work - add data
+        await db2.createQL('hot_restart_test', {'created_by': 'db2', 'value': 2});
+
+        // Verify we can query data (original data from db1 should still exist)
+        final results = await db2.selectQL('hot_restart_test');
+        expect(results, hasLength(2));
+      } finally {
+        await db2.close();
+      }
+
+      // Note: db1's handle is now invalid (was closed by registry)
+      // We don't call db1.close() because it would try to use an invalid handle
+    });
+
     test('different namespaces on same path work independently', () async {
       // Create database with namespace A
       var db = await Database.connect(
