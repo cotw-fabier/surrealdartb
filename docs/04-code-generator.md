@@ -59,6 +59,27 @@ targets:
 
 This configuration tells the generator to only process Dart files in the `lib/models/` directory.
 
+**Important: Non-Standard Source Directories**
+
+If your models are NOT in `lib/`, `test/`, `bin/`, or `web/` directories, you MUST add a `sources` directive. This is common in dependent packages with custom folder structures:
+
+```yaml
+targets:
+  $default:
+    sources:
+      - lib/**
+      - your_folder/**    # Add your custom folder
+      - $package$
+    builders:
+      surrealdartb|surreal_table_builder:
+        enabled: true
+        generate_for:
+          - lib/models/**/*.dart
+          - your_folder/**/*.dart
+```
+
+Without the `sources` directive, build_runner will not process files outside standard directories, even if `generate_for` includes them. This results in "wrote 0 outputs" during build.
+
 ### Defining Models with Annotations
 
 #### Basic Model Structure
@@ -985,6 +1006,26 @@ If `db.query<User>()` is not recognized:
 1. Run the generator to create query builder classes
 2. Import the model file with generated code
 3. Check that @SurrealTable annotation is present
+
+#### Code Generator Produces 0 Outputs
+
+If build_runner reports "wrote 0 outputs" even though you have annotated models:
+
+1. Check that your models are in a standard directory (`lib/`, `test/`, `bin/`, or `web/`)
+2. If models are in a custom directory, add the `sources` directive to `build.yaml`:
+   ```yaml
+   targets:
+     $default:
+       sources:
+         - lib/**
+         - your_custom_folder/**
+         - $package$
+       builders:
+         surrealdartb|surreal_table_builder:
+           enabled: true
+   ```
+3. Run `dart run build_runner clean` then rebuild
+4. Verify the `generate_for` pattern matches your model file paths
 
 ### Next Steps
 

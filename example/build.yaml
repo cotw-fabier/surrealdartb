@@ -4,6 +4,9 @@
 
 targets:
   $default:
+    sources:
+      - scenarios/**
+      - $package$
     builders:
       surrealdartb|surreal_table_builder:
         enabled: true

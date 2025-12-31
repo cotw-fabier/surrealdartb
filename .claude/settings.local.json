@@ -27,7 +27,8 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(cargo build:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(dart run build_runner:*)"
     ],
     "deny": [],
     "ask": []

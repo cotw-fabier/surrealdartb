@@ -26,6 +26,27 @@ dart run build_runner build
 dart run build_runner watch
 ```
 
+### Custom Source Directories
+
+By default, build_runner only processes files in `lib/`, `test/`, `bin/`, and `web/`. If your models are in a non-standard directory (like a dependent package with custom folders), you must add a `sources` directive:
+
+```yaml
+targets:
+  $default:
+    sources:
+      - lib/**
+      - your_custom_folder/**
+      - $package$
+    builders:
+      surrealdartb|surreal_table_builder:
+        enabled: true
+        generate_for:
+          - lib/models/*.dart
+          - your_custom_folder/**/*.dart
+```
+
+**Important:** The `generate_for` directive only *filters* files from existing sources - it doesn't add new source directories. Without the `sources` directive, files outside standard directories won't be processed and build_runner will report "wrote 0 outputs".
+
 ## @SurrealTable
 
 Mark class as database table.
