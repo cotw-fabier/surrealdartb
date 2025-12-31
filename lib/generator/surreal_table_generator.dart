@@ -13,7 +13,6 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
 import 'package:source_gen/source_gen.dart';
 import 'package:surrealdartb/src/schema/annotations.dart';
-import 'package:surrealdartb/src/schema/orm_annotations.dart';
 import 'package:surrealdartb/src/orm/relationship_metadata.dart';
 import 'relationship_detector.dart';
 import 'relationship_code_generator.dart';
@@ -111,6 +110,12 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     }
 
     final className = element.name;
+    if (className == null) {
+      throw InvalidGenerationSourceError(
+        '@SurrealTable class must have a name',
+        element: element,
+      );
+    }
     final fields = _extractFields(element);
     final idField = _findIdField(element);
     final relationships = RelationshipDetector.extractRelationships(element);
@@ -183,7 +188,9 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
     final fields = <_FieldInfo>[];
 
     // Check for @SurrealField annotations on fields
-    final checker = const TypeChecker.fromRuntime(SurrealField);
+    const checker = TypeChecker.fromUrl(
+      'package:surrealdartb/src/schema/annotations.dart#SurrealField',
+    );
 
     for (final field in classElement.fields) {
       final annotation = checker.firstAnnotationOf(field);
@@ -219,15 +226,18 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
         if (fieldType is InterfaceType) {
           final fieldClassElement = fieldType.element;
           if (fieldClassElement is ClassElement &&
-              !_isBuiltInType(fieldClassElement.name)) {
+              !_isBuiltInType(fieldClassElement.name ?? '')) {
             // Recursive nested object extraction
             nestedSchema = _extractNestedSchema(fieldClassElement);
           }
         }
       }
 
+      final fieldName = field.name;
+      if (fieldName == null) continue;
+
       fields.add(_FieldInfo(
-        name: field.name,
+        name: fieldName,
         dartType: field.type,
         type: typeObj,
         isOptional: isOptional,
@@ -273,7 +283,7 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   /// This method traverses nested classes to build complete schema definitions.
   /// It detects circular references and throws an error if found.
   Map<String, _FieldInfo>? _extractNestedSchema(ClassElement classElement) {
-    final className = classElement.name;
+    final className = classElement.name ?? '';
 
     // Check for circular reference
     if (_visitedTypes.contains(className)) {
@@ -312,13 +322,16 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
         Map<String, _FieldInfo>? subSchema;
         if (fieldType is InterfaceType) {
           final element = fieldType.element;
-          if (element is ClassElement && !_isBuiltInType(element.name)) {
+          if (element is ClassElement && !_isBuiltInType(element.name ?? '')) {
             subSchema = _extractNestedSchema(element);
           }
         }
 
-        nestedFields[field.name] = _FieldInfo(
-          name: field.name,
+        final nestedFieldName = field.name;
+        if (nestedFieldName == null) continue;
+
+        nestedFields[nestedFieldName] = _FieldInfo(
+          name: nestedFieldName,
           dartType: fieldType,
           type: null, // Type will be inferred
           isOptional: isOptional,
@@ -645,7 +658,9 @@ class SurrealTableGenerator extends GeneratorForAnnotation<SurrealTable> {
   /// 2. Look for field named 'id'
   /// 3. Return null if no ID field found
   String? _findIdField(ClassElement classElement) {
-    final idChecker = const TypeChecker.fromRuntime(SurrealId);
+    const idChecker = TypeChecker.fromUrl(
+      'package:surrealdartb/src/schema/orm_annotations.dart#SurrealId',
+    );
 
     // 1. Look for @SurrealId annotation
     for (final field in classElement.fields) {

@@ -29,8 +29,12 @@ class RelationshipDetector {
   ) {
     final relationships = <String, RelationshipMetadata>{};
 
-    final recordChecker = const TypeChecker.fromRuntime(SurrealRecord);
-    final relationChecker = const TypeChecker.fromRuntime(SurrealRelation);
+    const recordChecker = TypeChecker.fromUrl(
+      'package:surrealdartb/src/schema/orm_annotations.dart#SurrealRecord',
+    );
+    const relationChecker = TypeChecker.fromUrl(
+      'package:surrealdartb/src/schema/orm_annotations.dart#SurrealRelation',
+    );
 
     for (final field in classElement.fields) {
       // Skip static fields
@@ -39,7 +43,9 @@ class RelationshipDetector {
       // Check for @SurrealRecord
       final recordAnnotation = recordChecker.firstAnnotationOf(field);
       if (recordAnnotation != null) {
-        relationships[field.name] =
+        final fieldName = field.name;
+        if (fieldName == null) continue;
+        relationships[fieldName] =
             extractRecordLinkMetadata(field, recordAnnotation);
         continue;
       }
@@ -47,7 +53,9 @@ class RelationshipDetector {
       // Check for @SurrealRelation
       final relationAnnotation = relationChecker.firstAnnotationOf(field);
       if (relationAnnotation != null) {
-        relationships[field.name] =
+        final fieldName = field.name;
+        if (fieldName == null) continue;
+        relationships[fieldName] =
             extractGraphRelationMetadata(field, relationAnnotation);
         continue;
       }
@@ -77,7 +85,7 @@ class RelationshipDetector {
     final targetType = extractTargetType(fieldType);
 
     return RecordLinkMetadata(
-      fieldName: field.name,
+      fieldName: field.name ?? '',
       targetType: targetType,
       isList: isList,
       isOptional: isOptional,
@@ -120,7 +128,7 @@ class RelationshipDetector {
     final targetType = extractTargetType(fieldType);
 
     return GraphRelationMetadata(
-      fieldName: field.name,
+      fieldName: field.name ?? '',
       targetType: targetType,
       isList: isList,
       isOptional: isOptional,
@@ -150,7 +158,7 @@ class RelationshipDetector {
         return elementType.element?.name ?? 'dynamic';
       }
       // For single type
-      return type.element.name;
+      return type.element.name ?? 'dynamic';
     }
     return 'dynamic';
   }
