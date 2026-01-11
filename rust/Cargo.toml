@@ -16,8 +16,8 @@ name = "test_vector_storage"
 path = "test_vector_storage.rs"
 
 [dependencies]
-surrealdb = { version = "2.3.10", default-features = false, features = ["kv-mem", "kv-rocksdb"] }
-surrealdb-core = "2.3.10"
+surrealdb = { version = "3.0.0-beta.1", default-features = false, features = ["kv-mem", "kv-rocksdb"] }
+surrealdb-core = "3.0.0-beta.1"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -29,6 +29,9 @@ env_logger = "0.11"
 log = "0.4"
 # Use SurrealDB's forked rocksdb to avoid native library linking conflicts
 surrealdb-rocksdb = "0.24.0-surreal.1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 opt-level = "z"

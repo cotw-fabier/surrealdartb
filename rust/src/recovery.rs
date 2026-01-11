@@ -212,10 +212,15 @@ pub extern "C" fn db_verify_rocksdb(path: *const c_char) -> i32 {
             return 2;
         }
 
-        // Close any existing connection before attempting read-only open
-        close_existing_connection(path_str);
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Check if there's an active connection - if so, the database is healthy
+        // (it's currently in use). We should NOT close it as that would cause
+        // use-after-free crashes on the Dart side.
+        if crate::connection_registry::has_active_connection(path_str) {
+            debug!("Database at {} has active connection, assuming healthy", path_str);
+            return 0; // Healthy - it's actively being used
+        }
 
+        // No active connection, safe to do read-only verification
         // Try to open in read-only mode to verify integrity
         let mut opts = Options::default();
         // Limit resources for verification

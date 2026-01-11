@@ -4,6 +4,7 @@ use serde_json::Value;
 use crate::database::Database;
 use crate::error::set_last_error;
 use crate::runtime::get_runtime;
+use crate::connection_registry::is_handle_valid;
 
 /// Opaque handle for query response
 ///
@@ -14,218 +15,181 @@ pub struct Response {
     pub errors: Vec<String>,
 }
 
-/// Helper function to convert surrealdb::Value to serde_json::Value
+/// Helper function to convert surrealdb::types::Value to serde_json::Value
 ///
-/// **Why Manual Unwrapping is Necessary:**
+/// **SurrealDB 3.0.0 Changes:**
 ///
-/// SurrealDB's Value type is an enum with variants like Strand, Number, Thing, Object, Array, etc.
-/// Using serde_json::to_value() or to_string() preserves these enum tags in the serialized output:
-/// - Example: `{"Strand": "Alice"}` instead of `"Alice"`
-/// - Example: `{"Number": {"Int": 30}}` instead of `30`
-///
-/// This creates "type wrapper pollution" in the JSON returned to Dart, making all field values
-/// appear as complex nested objects instead of simple values. This manual unwrapper solves this
-/// by pattern matching on each variant and extracting the actual inner value.
+/// In SurrealDB 3.0.0-beta, the Value type has been reorganized into `surrealdb_types`.
+/// The type is now a clean enum that can be pattern-matched directly without unsafe transmute.
 ///
 /// **How This Works:**
 ///
-/// 1. surrealdb::Value is a transparent wrapper: `pub struct Value(pub(crate) CoreValue)`
-/// 2. We use unsafe transmute to access the inner CoreValue enum
-/// 3. Pattern match on CoreValue variants (Strand, Number, Thing, Bool, etc.)
-/// 4. Extract the actual value from each variant and convert to serde_json::Value
-/// 5. Recursively process nested Objects and Arrays
-///
-/// **Safety:**
-///
-/// The transmute operations are safe because:
-/// - surrealdb::Value has `#[repr(transparent)]` attribute
-/// - Memory layout is identical to the wrapped CoreValue
-/// - We only borrow through references, never move or mutate
-/// - The transmute just changes the type's compile-time view, not runtime representation
+/// 1. Pattern match on Value variants (String, Number, RecordId, Bool, etc.)
+/// 2. Extract the actual value from each variant and convert to serde_json::Value
+/// 3. Recursively process nested Objects, Arrays, and Sets
 ///
 /// **Examples of Unwrapping:**
 ///
-/// - `CoreValue::Strand("text")` → `JsonValue::String("text")`
-/// - `CoreValue::Number(Int(42))` → `JsonValue::Number(42)`
-/// - `CoreValue::Thing{tb:"person",id:"123"}` → `JsonValue::String("person:123")`
-/// - `CoreValue::Bool(true)` → `JsonValue::Bool(true)`
-/// - `CoreValue::Object(...)` → `JsonValue::Object(...)` with recursively unwrapped values
-/// - `CoreValue::Array(...)` → `JsonValue::Array(...)` with recursively unwrapped elements
-/// - `CoreValue::Decimal(d)` → `JsonValue::String(d.to_string())` (preserves precision)
+/// - `Value::String("text")` → `JsonValue::String("text")`
+/// - `Value::Number(Number::Int(42))` → `JsonValue::Number(42)`
+/// - `Value::RecordId(...)` → `JsonValue::String("table:id")`
+/// - `Value::Bool(true)` → `JsonValue::Bool(true)`
+/// - `Value::Object(...)` → `JsonValue::Object(...)` with recursively unwrapped values
+/// - `Value::Array(...)` → `JsonValue::Array(...)` with recursively unwrapped elements
+/// - `Value::Set(...)` → `JsonValue::Array(...)` (sets serialized as arrays)
 ///
 /// This approach produces clean JSON that matches what users expect from a database query,
 /// without any internal type system artifacts leaking through to the Dart layer.
-pub fn surreal_value_to_json(value: &surrealdb::Value) -> Result<Value, String> {
-    use surrealdb_core::sql::Value as CoreValue;
-    use surrealdb_core::sql::Number;
+pub fn surreal_value_to_json(value: &surrealdb::types::Value) -> Result<Value, String> {
+    use surrealdb::types::Value as SurrealValue;
+    use surrealdb::types::Number;
 
-    // Access the inner CoreValue through the transparent wrapper
-    // surrealdb::Value is defined as: pub struct Value(pub(crate) CoreValue)
-    // We match on the reference to avoid cloning
-    let core_value: &CoreValue = unsafe {
-        // SAFETY: Value is a transparent wrapper around CoreValue with #[repr(transparent)]
-        // This transmute is safe because the memory layout is identical - we're just changing
-        // the compile-time type view. We only borrow, never move or mutate.
-        std::mem::transmute(value)
-    };
-
-    match core_value {
-        // String values - unwrap the Strand variant
-        CoreValue::Strand(s) => Ok(Value::String(s.0.clone())),
+    match value {
+        // String values - direct conversion
+        SurrealValue::String(s) => Ok(Value::String(s.clone())),
 
         // Numeric values - match on the Number enum variants
-        CoreValue::Number(Number::Int(i)) => {
+        SurrealValue::Number(Number::Int(i)) => {
             Ok(Value::Number((*i).into()))
         },
-        CoreValue::Number(Number::Float(f)) => {
-            // Convert float to JSON number, falling back to null if NaN/Inf
-            Ok(serde_json::Number::from_f64(*f)
-                .map(Value::Number)
-                .unwrap_or(Value::Null))
+        SurrealValue::Number(Number::Float(f)) => {
+            // Handle Infinity values (new in SurrealDB 3.0)
+            if f.is_infinite() {
+                if f.is_sign_positive() {
+                    Ok(Value::String("Infinity".to_string()))
+                } else {
+                    Ok(Value::String("-Infinity".to_string()))
+                }
+            } else if f.is_nan() {
+                // NaN maps to null
+                Ok(Value::Null)
+            } else {
+                // Convert float to JSON number
+                Ok(serde_json::Number::from_f64(*f)
+                    .map(Value::Number)
+                    .unwrap_or(Value::Null))
+            }
         },
-        CoreValue::Number(Number::Decimal(d)) => {
+        SurrealValue::Number(Number::Decimal(d)) => {
             // Decimal - convert to string to preserve arbitrary precision
             // JSON numbers have limited precision, so we use string representation
             Ok(Value::String(d.to_string()))
         },
 
-        // Record ID (Thing) - convert to "table:id" format string
+        // Record ID - convert to "table:key" format string
         // This is the standard SurrealDB representation for record IDs
-        CoreValue::Thing(thing) => {
-            Ok(Value::String(format!("{}:{}", thing.tb, thing.id)))
+        SurrealValue::RecordId(record_id) => {
+            use surrealdb::types::RecordIdKey;
+            // Format key based on its type
+            let key_str = match &record_id.key {
+                RecordIdKey::Number(n) => n.to_string(),
+                RecordIdKey::String(s) => s.clone(),
+                RecordIdKey::Uuid(u) => u.to_string(),
+                RecordIdKey::Array(arr) => {
+                    // For arrays, serialize as JSON
+                    let vals: Result<Vec<_>, _> = arr.iter()
+                        .map(|v| surreal_value_to_json(v))
+                        .collect();
+                    serde_json::to_string(&vals?).unwrap_or_default()
+                },
+                RecordIdKey::Object(obj) => {
+                    // For objects, serialize as JSON
+                    let mut map = serde_json::Map::new();
+                    for (k, v) in obj.iter() {
+                        map.insert(k.clone(), surreal_value_to_json(v)?);
+                    }
+                    serde_json::to_string(&map).unwrap_or_default()
+                },
+                RecordIdKey::Range(_) => "<range>".to_string(),
+            };
+            Ok(Value::String(format!("{}:{}", record_id.table.as_str(), key_str)))
         },
 
         // Object - recursively unwrap all field values
-        CoreValue::Object(obj) => {
+        SurrealValue::Object(obj) => {
             let mut map = serde_json::Map::new();
-            for (k, v) in obj.0.iter() {
-                // Need to wrap CoreValue back to Value for recursion
-                let wrapped_v = unsafe {
-                    // SAFETY: Same transparent wrapper logic - just changing type view
-                    std::mem::transmute::<&CoreValue, &surrealdb::Value>(v)
-                };
-                map.insert(k.clone(), surreal_value_to_json(wrapped_v)?);
+            for (k, v) in obj.iter() {
+                map.insert(k.clone(), surreal_value_to_json(v)?);
             }
             Ok(Value::Object(map))
         },
 
         // Array - recursively unwrap all element values
-        CoreValue::Array(arr) => {
-            let values: Result<Vec<_>, _> = arr.0.iter()
-                .map(|v| {
-                    let wrapped_v = unsafe {
-                        // SAFETY: Same transparent wrapper logic
-                        std::mem::transmute::<&CoreValue, &surrealdb::Value>(v)
-                    };
-                    surreal_value_to_json(wrapped_v)
-                })
+        SurrealValue::Array(arr) => {
+            let values: Result<Vec<_>, _> = arr.iter()
+                .map(|v| surreal_value_to_json(v))
+                .collect();
+            Ok(Value::Array(values?))
+        },
+
+        // Set - convert to JSON array (new in SurrealDB 3.0)
+        SurrealValue::Set(set) => {
+            let values: Result<Vec<_>, _> = set.iter()
+                .map(|v| surreal_value_to_json(v))
                 .collect();
             Ok(Value::Array(values?))
         },
 
         // Boolean values - direct conversion
-        CoreValue::Bool(b) => Ok(Value::Bool(*b)),
+        SurrealValue::Bool(b) => Ok(Value::Bool(*b)),
 
         // Null and None - both map to JSON null
-        CoreValue::None | CoreValue::Null => Ok(Value::Null),
+        SurrealValue::None | SurrealValue::Null => Ok(Value::Null),
 
         // DateTime - convert to ISO 8601 string representation
-        CoreValue::Datetime(dt) => Ok(Value::String(dt.to_string())),
+        SurrealValue::Datetime(dt) => Ok(Value::String(dt.to_string())),
 
         // UUID - convert to standard UUID string format
-        CoreValue::Uuid(uuid) => Ok(Value::String(uuid.to_string())),
+        SurrealValue::Uuid(uuid) => Ok(Value::String(uuid.to_string())),
 
         // Duration - convert to string representation
-        CoreValue::Duration(d) => Ok(Value::String(d.to_string())),
+        SurrealValue::Duration(d) => Ok(Value::String(d.to_string())),
 
         // Geometry types - convert to string representation
-        // TODO: Consider converting to proper GeoJSON format in future
-        CoreValue::Geometry(geo) => {
+        SurrealValue::Geometry(geo) => {
             Ok(Value::String(geo.to_string()))
         },
 
         // Bytes - convert to base64 string for safe JSON transport
-        CoreValue::Bytes(bytes) => {
+        SurrealValue::Bytes(bytes) => {
             use base64::{Engine as _, engine::general_purpose};
-            let encoded = general_purpose::STANDARD.encode(&**bytes);
+            let encoded = general_purpose::STANDARD.encode(bytes.as_ref());
             Ok(Value::String(encoded))
         },
 
-        // Query/Subquery - convert to string representation
-        CoreValue::Query(_) | CoreValue::Subquery(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Function - convert to string representation
-        CoreValue::Function(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Model - convert to string representation
-        CoreValue::Model(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Range - convert to string representation
-        CoreValue::Range(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Param - convert to string representation
-        CoreValue::Param(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Idiom - convert to string representation
-        CoreValue::Idiom(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
         // Table - convert to string representation
-        CoreValue::Table(_) => {
-            Ok(Value::String(core_value.to_string()))
+        SurrealValue::Table(table) => {
+            Ok(Value::String(table.to_string()))
         },
 
-        // Mock - convert to string representation
-        CoreValue::Mock(_) => {
-            Ok(Value::String(core_value.to_string()))
+        // File - convert to "bucket:key" format (new in SurrealDB 3.0)
+        SurrealValue::File(file) => {
+            Ok(Value::String(format!("{}:{}", file.bucket(), file.key())))
+        },
+
+        // Range - convert to JSON object with start/end bounds
+        SurrealValue::Range(range) => {
+            use std::ops::Bound;
+            let start = match range.start() {
+                Bound::Included(v) => surreal_value_to_json(v)?,
+                Bound::Excluded(v) => surreal_value_to_json(v)?,
+                Bound::Unbounded => Value::Null,
+            };
+            let end = match range.end() {
+                Bound::Included(v) => surreal_value_to_json(v)?,
+                Bound::Excluded(v) => surreal_value_to_json(v)?,
+                Bound::Unbounded => Value::Null,
+            };
+            let mut map = serde_json::Map::new();
+            map.insert("start".to_string(), start);
+            map.insert("end".to_string(), end);
+            Ok(Value::Object(map))
         },
 
         // Regex - convert to string representation
-        CoreValue::Regex(_) => {
-            Ok(Value::String(core_value.to_string()))
+        SurrealValue::Regex(regex) => {
+            Ok(Value::String(regex.to_string()))
         },
-
-        // Block - convert to string representation
-        CoreValue::Block(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Constant - convert to string representation
-        CoreValue::Constant(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Cast - convert to string representation
-        CoreValue::Cast(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Expression - convert to string representation
-        CoreValue::Expression(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Future - convert to string representation
-        CoreValue::Future(_) => {
-            Ok(Value::String(core_value.to_string()))
-        },
-
-        // Catch-all for any other types not explicitly handled
-        // Uses Display trait as fallback
-        _ => {
-            Ok(Value::String(format!("{}", core_value)))
-        }
     }
 }
 
@@ -254,6 +218,12 @@ pub extern "C" fn db_query(handle: *mut Database, sql: *const c_char) -> *mut Re
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -298,7 +268,7 @@ pub extern "C" fn db_query(handle: *mut Database, sql: *const c_char) -> *mut Re
                 // Extract all results from the response
                 // Use surrealdb::Value type and convert to serde_json::Value
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             // Convert surrealdb::Value to serde_json::Value using manual unwrapper
                             match surreal_value_to_json(&value) {
@@ -511,6 +481,12 @@ pub extern "C" fn db_select(handle: *mut Database, table: *const c_char) -> *mut
             return std::ptr::null_mut();
         }
 
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
+            return std::ptr::null_mut();
+        }
+
         if table.is_null() {
             set_last_error("Table name cannot be null");
             return std::ptr::null_mut();
@@ -550,7 +526,7 @@ pub extern "C" fn db_select(handle: *mut Database, table: *const c_char) -> *mut
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -611,6 +587,12 @@ pub extern "C" fn db_get(handle: *mut Database, resource: *const c_char) -> *mut
             return std::ptr::null_mut();
         }
 
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
+            return std::ptr::null_mut();
+        }
+
         if resource.is_null() {
             set_last_error("Resource cannot be null");
             return std::ptr::null_mut();
@@ -655,7 +637,7 @@ pub extern "C" fn db_get(handle: *mut Database, resource: *const c_char) -> *mut
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -711,6 +693,12 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -776,7 +764,7 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -832,6 +820,12 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -897,7 +891,7 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -954,6 +948,12 @@ pub extern "C" fn db_delete(handle: *mut Database, resource: *const c_char) -> *
             return std::ptr::null_mut();
         }
 
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
+            return std::ptr::null_mut();
+        }
+
         if resource.is_null() {
             set_last_error("Resource cannot be null");
             return std::ptr::null_mut();
@@ -992,7 +992,7 @@ pub extern "C" fn db_delete(handle: *mut Database, resource: *const c_char) -> *
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -1049,6 +1049,12 @@ pub extern "C" fn db_upsert_content(handle: *mut Database, resource: *const c_ch
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -1120,7 +1126,7 @@ pub extern "C" fn db_upsert_content(handle: *mut Database, resource: *const c_ch
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -1177,6 +1183,12 @@ pub extern "C" fn db_upsert_merge(handle: *mut Database, resource: *const c_char
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -1248,7 +1260,7 @@ pub extern "C" fn db_upsert_merge(handle: *mut Database, resource: *const c_char
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -1313,6 +1325,12 @@ pub extern "C" fn db_upsert_patch(handle: *mut Database, resource: *const c_char
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -1390,7 +1408,7 @@ pub extern "C" fn db_upsert_patch(handle: *mut Database, resource: *const c_char
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -1462,6 +1480,12 @@ pub extern "C" fn db_insert(handle: *mut Database, resource: *const c_char, data
             return std::ptr::null_mut();
         }
 
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
+            return std::ptr::null_mut();
+        }
+
         if resource.is_null() {
             set_last_error("Resource cannot be null");
             return std::ptr::null_mut();
@@ -1524,7 +1548,7 @@ pub extern "C" fn db_insert(handle: *mut Database, resource: *const c_char, data
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -1590,6 +1614,12 @@ pub extern "C" fn db_export(handle: *mut Database, path: *const c_char) -> i32 {
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return -1;
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return -1;
         }
 
@@ -1661,6 +1691,12 @@ pub extern "C" fn db_import(handle: *mut Database, path: *const c_char) -> i32 {
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return -1;
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return -1;
         }
 
@@ -1838,6 +1874,12 @@ pub extern "C" fn db_set(handle: *mut Database, name: *const c_char, value: *con
             return -1;
         }
 
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
+            return -1;
+        }
+
         if name.is_null() {
             set_last_error("Parameter name cannot be null");
             return -1;
@@ -1931,6 +1973,12 @@ pub extern "C" fn db_unset(handle: *mut Database, name: *const c_char) -> i32 {
             return -1;
         }
 
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
+            return -1;
+        }
+
         if name.is_null() {
             set_last_error("Parameter name cannot be null");
             return -1;
@@ -2009,6 +2057,12 @@ pub extern "C" fn db_run(handle: *mut Database, function: *const c_char, args: *
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 
@@ -2099,7 +2153,7 @@ pub extern "C" fn db_run(handle: *mut Database, function: *const c_char, args: *
 
                 // Extract results and unwrap using manual unwrapper
                 for idx in 0..num_statements {
-                    match response.take::<surrealdb::Value>(idx) {
+                    match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
@@ -2158,6 +2212,12 @@ pub extern "C" fn db_version(handle: *mut Database) -> *mut c_char {
     match panic::catch_unwind(|| {
         if handle.is_null() {
             set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        // Validate handle is still registered (prevents use-after-free)
+        if !is_handle_valid(handle) {
+            set_last_error("Database handle is no longer valid (connection was closed)");
             return std::ptr::null_mut();
         }
 

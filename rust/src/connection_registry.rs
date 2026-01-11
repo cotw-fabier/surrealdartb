@@ -41,6 +41,18 @@ lazy_static! {
         RwLock::new(HashMap::new());
 }
 
+/// Check if there's an active connection for a given path
+///
+/// This is used by verification to skip closing active connections,
+/// which would cause use-after-free crashes on the Dart side.
+pub fn has_active_connection(path: &str) -> bool {
+    let registry = match CONNECTION_REGISTRY.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    registry.contains_key(path)
+}
+
 /// Extract the path from a RocksDB endpoint
 ///
 /// Returns Some(path) for RocksDB endpoints, None for other backends (e.g., mem://)
@@ -76,6 +88,8 @@ pub fn extract_rocksdb_path(endpoint: &str) -> Option<String> {
 /// can close it properly. This should not normally happen if close_existing_connection
 /// is called before creating new connections.
 pub fn register_connection(path: String, handle: *mut Database) -> Option<*mut Database> {
+    debug!("register_connection: handle {:p} for path '{}'", handle, path);
+
     let mut registry = match CONNECTION_REGISTRY.write() {
         Ok(guard) => guard,
         Err(poisoned) => {
@@ -88,7 +102,7 @@ pub fn register_connection(path: String, handle: *mut Database) -> Option<*mut D
     if old.is_some() {
         warn!("Replaced existing connection for path: {}", path);
     } else {
-        debug!("Registered new connection for path: {}", path);
+        debug!("Registered new connection for path: {} (registry now has {} entries)", path, registry.len());
     }
     old.map(|h| h.0)
 }
@@ -108,12 +122,39 @@ pub fn unregister_connection(path: &str) {
     }
 }
 
+/// Check if a database handle is still valid (registered in the connection registry)
+///
+/// This function should be called before dereferencing a handle to prevent
+/// use-after-free crashes when a database has been closed but the Dart side
+/// still holds a stale pointer.
+///
+/// # Safety
+/// This only checks if the handle is registered. The caller must still ensure
+/// proper synchronization when accessing the handle.
+pub fn is_handle_valid(handle: *mut Database) -> bool {
+    if handle.is_null() {
+        return false;
+    }
+
+    let registry = match CONNECTION_REGISTRY.read() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!("Connection registry lock was poisoned during validation, recovering");
+            poisoned.into_inner()
+        }
+    };
+
+    registry.values().any(|h| h.0 == handle)
+}
+
 /// Close and unregister an existing connection for a path
 ///
 /// This should be called before creating a new connection to the same path.
 /// It handles the Hot Restart scenario where the old Dart isolate is gone
 /// but the Rust-side connection is still active.
 pub fn close_existing_connection(path: &str) {
+    debug!("close_existing_connection: called for path '{}'", path);
+
     // First, check if there's an existing connection and remove it from registry
     let old_handle = {
         let mut registry = match CONNECTION_REGISTRY.write() {

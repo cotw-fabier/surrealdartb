@@ -1112,6 +1112,70 @@ class Database {
     });
   }
 
+  /// Refreshes the current authentication token.
+  ///
+  /// This method uses a valid JWT token to obtain a new access token.
+  /// The current token must still be valid (not expired) for refresh to succeed.
+  ///
+  /// **New in SurrealDB 3.0**: This method uses the refresh token support
+  /// added in SurrealDB 3.0.0-beta.
+  ///
+  /// Parameters:
+  /// - [currentToken] - The current JWT token to refresh
+  ///
+  /// Returns a new JWT token with updated access and optional refresh tokens.
+  ///
+  /// Throws:
+  /// - [StateError] if database is closed
+  /// - [AuthenticationException] if token refresh fails
+  /// - [DatabaseException] for other errors
+  ///
+  /// Embedded Mode Limitations:
+  /// - Token refresh may have limited functionality in embedded mode
+  /// - Authentication is typically bypassed in embedded mode
+  ///
+  /// Example:
+  /// ```dart
+  /// // Get initial token via signin
+  /// final jwt = await db.signin(credentials);
+  ///
+  /// // Later, refresh the token before it expires
+  /// try {
+  ///   final newJwt = await db.refreshToken(jwt);
+  ///   print('Token refreshed successfully');
+  /// } catch (e) {
+  ///   print('Token refresh failed: $e');
+  ///   // Re-authenticate if refresh fails
+  ///   final newJwt = await db.signin(credentials);
+  /// }
+  /// ```
+  Future<Jwt> refreshToken(Jwt currentToken) async {
+    _ensureNotClosed();
+
+    return Future(() {
+      final tokenStr = currentToken.asInsecureToken();
+      final tokenPtr = tokenStr.toNativeUtf8();
+
+      try {
+        final resultPtr = dbRefreshToken(_handle, tokenPtr);
+        if (resultPtr == nullptr) {
+          final error = _getLastErrorString();
+          throw AuthenticationException(error ?? 'Token refresh failed');
+        }
+
+        try {
+          final tokenJsonStr = resultPtr.toDartString();
+          final tokenJson = jsonDecode(tokenJsonStr);
+          return Jwt.fromJson(tokenJson);
+        } finally {
+          freeString(resultPtr);
+        }
+      } finally {
+        malloc.free(tokenPtr);
+      }
+    });
+  }
+
   /// Sets a query parameter that can be used in subsequent queries.
   ///
   /// Parameters are stored per connection and can be referenced in queries
@@ -2385,10 +2449,17 @@ class Database {
 
     _closed = true;
 
+    // Capture handle before zeroing to prevent use-after-free
+    // Any subsequent operations will see nullptr and fail safely
+    final handleToClose = _handle;
+    _handle = nullptr.cast<NativeDatabase>();
+
     return Future(() async {
       try {
         // Close the native database handle
-        dbClose(_handle);
+        if (handleToClose != nullptr) {
+          dbClose(handleToClose);
+        }
 
         // Add a delay to ensure async cleanup completes
         // This is especially important for RocksDB to release file locks
