@@ -533,3 +533,83 @@ external Pointer<NativeResponse> dbRun(
 /// Returns: UTF-8 string containing version (must be freed with freeString)
 @Native<NativeDbVersion>(symbol: 'db_version', assetId: 'package:surrealdartb/surrealdartb_bindings')
 external Pointer<Utf8> dbVersion(Pointer<NativeDatabase> handle);
+
+//
+// Database Recovery Operations
+//
+
+/// Repairs a corrupted RocksDB database.
+///
+/// This function attempts to repair a RocksDB database that has become corrupted
+/// due to improper shutdown, missing files, or other issues. It works directly
+/// on the file system path, not through a SurrealDB connection.
+///
+/// Important: This function will close any existing connections to the database
+/// before attempting repair. A 500ms delay is used to ensure file locks are released.
+///
+/// Parameters:
+/// - [path] - File system path to the RocksDB database directory (not the rocksdb:// URL)
+///
+/// Returns:
+/// - 0 on successful repair
+/// - -1 on failure (call [getLastError] for details)
+///
+/// Example:
+/// ```dart
+/// final pathPtr = path.toNativeUtf8();
+/// try {
+///   final result = dbRepairRocksDB(pathPtr);
+///   if (result != 0) {
+///     final errorPtr = getLastError();
+///     final error = errorPtr.toDartString();
+///     freeString(errorPtr);
+///     throw Exception('Repair failed: $error');
+///   }
+/// } finally {
+///   malloc.free(pathPtr);
+/// }
+/// ```
+@Native<NativeDbRepairRocksDB>(symbol: 'db_repair_rocksdb', assetId: 'package:surrealdartb/surrealdartb_bindings')
+external int dbRepairRocksDB(Pointer<Utf8> path);
+
+/// Verifies the integrity of a RocksDB database.
+///
+/// This function checks the health of a RocksDB database by examining its
+/// critical files (MANIFEST, CURRENT) and attempting a read-only open.
+/// It works directly on the file system path, not through a SurrealDB connection.
+///
+/// This is useful for:
+/// - Detecting database corruption before connection attempts
+/// - Determining the appropriate recovery strategy
+/// - Health monitoring and diagnostics
+///
+/// Parameters:
+/// - [path] - File system path to the RocksDB database directory (not the rocksdb:// URL)
+///
+/// Returns:
+/// - 0 if database is healthy (or path doesn't exist, meaning a new DB can be created)
+/// - 1 if database is corrupted but likely repairable (call [dbRepairRocksDB])
+/// - 2 if database has severe corruption (may require restore from backup or fresh start)
+/// - -1 on error (call [getLastError] for details)
+///
+/// Example:
+/// ```dart
+/// final pathPtr = path.toNativeUtf8();
+/// try {
+///   final health = dbVerifyRocksDB(pathPtr);
+///   switch (health) {
+///     case 0: print('Database is healthy');
+///     case 1: print('Database is corrupted but repairable');
+///     case 2: print('Database has severe corruption');
+///     default:
+///       final errorPtr = getLastError();
+///       final error = errorPtr.toDartString();
+///       freeString(errorPtr);
+///       print('Verification error: $error');
+///   }
+/// } finally {
+///   malloc.free(pathPtr);
+/// }
+/// ```
+@Native<NativeDbVerifyRocksDB>(symbol: 'db_verify_rocksdb', assetId: 'package:surrealdartb/surrealdartb_bindings')
+external int dbVerifyRocksDB(Pointer<Utf8> path);

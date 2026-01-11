@@ -91,7 +91,7 @@
 library;
 
 // Public API exports
-export 'src/database.dart' show Database;
+export 'src/database.dart' show Database, DatabaseHealth;
 export 'src/exceptions.dart'
     show
         DatabaseException,

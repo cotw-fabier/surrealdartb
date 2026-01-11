@@ -41,6 +41,7 @@ pub mod database;
 pub mod query;
 pub mod auth;
 pub mod connection_registry;
+pub mod recovery;
 // pub mod live_query;
 
 // Re-export main FFI functions for convenience
@@ -53,6 +54,7 @@ pub use query::{
     db_export, db_import, db_set, db_unset, db_run, db_version
 };
 pub use auth::{db_signin, db_signup, db_authenticate, db_invalidate};
+pub use recovery::{db_repair_rocksdb, db_verify_rocksdb};
 // pub use live_query::{db_select_live, db_live_poll, db_kill_live};
 
 static INIT_LOGGER: Once = Once::new();

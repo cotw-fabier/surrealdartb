@@ -254,3 +254,25 @@ typedef NativeDbVersion = Pointer<Utf8> Function(Pointer<NativeDatabase> handle)
 /// This function is idempotent and safe to call multiple times.
 /// Should be called before any other FFI operations to enable Rust logging.
 typedef NativeInitLogger = Void Function();
+
+/// Type definition for RocksDB repair function.
+///
+/// Attempts to repair a corrupted RocksDB database at the specified path.
+/// This function works directly on the file system, not through SurrealDB.
+///
+/// Returns:
+/// - 0 on successful repair
+/// - -1 on failure (call getLastError for details)
+typedef NativeDbRepairRocksDB = Int32 Function(Pointer<Utf8> path);
+
+/// Type definition for RocksDB verification function.
+///
+/// Checks the integrity of a RocksDB database at the specified path.
+/// This function works directly on the file system, not through SurrealDB.
+///
+/// Returns:
+/// - 0 if database is healthy (or path doesn't exist)
+/// - 1 if database is corrupted but likely repairable
+/// - 2 if database has severe corruption
+/// - -1 on error (call getLastError for details)
+typedef NativeDbVerifyRocksDB = Int32 Function(Pointer<Utf8> path);

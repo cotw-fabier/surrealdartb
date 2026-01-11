@@ -2513,4 +2513,174 @@ class Database {
       freeString(errorPtr);
     }
   }
+
+  // ============================================================================
+  // Database Recovery Methods
+  // ============================================================================
+
+  /// Verifies the integrity of a RocksDB database without connecting.
+  ///
+  /// This static method checks the health of a RocksDB database by examining
+  /// its critical files (MANIFEST, CURRENT) and attempting a read-only open.
+  /// It works directly on file system paths, without establishing a database
+  /// connection.
+  ///
+  /// This is useful for:
+  /// - Detecting database corruption before connection attempts
+  /// - Implementing recovery flows in your application
+  /// - Health monitoring and diagnostics
+  ///
+  /// ## Health States
+  ///
+  /// - [DatabaseHealth.healthy]: Database is intact and can be opened
+  /// - [DatabaseHealth.corrupted]: Database is corrupted but may be repairable via [repairRocksDB]
+  /// - [DatabaseHealth.severelyCorrupted]: Database has severe corruption (missing CURRENT/MANIFEST)
+  /// - [DatabaseHealth.error]: Verification failed due to an error
+  ///
+  /// Parameters:
+  /// - [path] - The file system path to the RocksDB database directory
+  ///   (NOT the rocksdb:// URL, just the path)
+  ///
+  /// Returns the health status of the database.
+  ///
+  /// Example:
+  /// ```dart
+  /// final dbPath = '/path/to/my/database';
+  /// final health = await Database.verifyRocksDB(dbPath);
+  ///
+  /// switch (health) {
+  ///   case DatabaseHealth.healthy:
+  ///     print('Database is healthy, safe to connect');
+  ///     break;
+  ///   case DatabaseHealth.corrupted:
+  ///     print('Database is corrupted, attempting repair...');
+  ///     await Database.repairRocksDB(dbPath);
+  ///     break;
+  ///   case DatabaseHealth.severelyCorrupted:
+  ///     print('Database is severely corrupted, consider restore or fresh start');
+  ///     break;
+  ///   case DatabaseHealth.error:
+  ///     print('Verification error occurred');
+  ///     break;
+  /// }
+  /// ```
+  static Future<DatabaseHealth> verifyRocksDB(String path) async {
+    if (path.isEmpty) {
+      throw ArgumentError.value(path, 'path', 'Path cannot be empty');
+    }
+
+    return Future(() {
+      final pathPtr = path.toNativeUtf8();
+      try {
+        final result = dbVerifyRocksDB(pathPtr);
+        return switch (result) {
+          0 => DatabaseHealth.healthy,
+          1 => DatabaseHealth.corrupted,
+          2 => DatabaseHealth.severelyCorrupted,
+          _ => DatabaseHealth.error,
+        };
+      } finally {
+        malloc.free(pathPtr);
+      }
+    });
+  }
+
+  /// Attempts to repair a corrupted RocksDB database.
+  ///
+  /// This static method uses RocksDB's built-in repair functionality to attempt
+  /// recovery of a corrupted database. It works directly on file system paths
+  /// without establishing a database connection.
+  ///
+  /// ## When to Use
+  ///
+  /// Call this method when [verifyRocksDB] returns [DatabaseHealth.corrupted].
+  /// For [DatabaseHealth.severelyCorrupted], repair may not succeed and you may
+  /// need to restore from backup or start fresh.
+  ///
+  /// ## Important Notes
+  ///
+  /// - **Backup first**: Always backup your database directory before repair
+  /// - **Closes existing connections**: This function will close any existing
+  ///   connections to the database before attempting repair
+  /// - **Data loss possible**: While repair tries to preserve data, some data
+  ///   may be lost during the repair process
+  /// - **Blocking operation**: Repair may take a long time for large databases
+  ///
+  /// Parameters:
+  /// - [path] - The file system path to the RocksDB database directory
+  ///   (NOT the rocksdb:// URL, just the path)
+  ///
+  /// Returns `true` if repair succeeded, `false` if repair failed.
+  ///
+  /// Example:
+  /// ```dart
+  /// final dbPath = '/path/to/my/database';
+  ///
+  /// // Always backup first
+  /// await backupDatabase(dbPath);
+  ///
+  /// // Verify database health
+  /// final health = await Database.verifyRocksDB(dbPath);
+  /// if (health == DatabaseHealth.corrupted) {
+  ///   print('Attempting repair...');
+  ///   final success = await Database.repairRocksDB(dbPath);
+  ///   if (success) {
+  ///     print('Repair successful');
+  ///     // Re-verify after repair
+  ///     final newHealth = await Database.verifyRocksDB(dbPath);
+  ///     if (newHealth == DatabaseHealth.healthy) {
+  ///       // Safe to connect
+  ///       final db = await Database.connect(
+  ///         backend: StorageBackend.rocksdb,
+  ///         path: dbPath,
+  ///       );
+  ///     }
+  ///   } else {
+  ///     print('Repair failed, restore from backup');
+  ///   }
+  /// }
+  /// ```
+  static Future<bool> repairRocksDB(String path) async {
+    if (path.isEmpty) {
+      throw ArgumentError.value(path, 'path', 'Path cannot be empty');
+    }
+
+    return Future(() {
+      final pathPtr = path.toNativeUtf8();
+      try {
+        final result = dbRepairRocksDB(pathPtr);
+        return result == 0;
+      } finally {
+        malloc.free(pathPtr);
+      }
+    });
+  }
+}
+
+/// Health status of a RocksDB database.
+///
+/// Used by [Database.verifyRocksDB] to report database integrity status.
+enum DatabaseHealth {
+  /// Database is healthy and can be opened normally.
+  healthy,
+
+  /// Database is corrupted but may be repairable.
+  ///
+  /// This typically indicates missing SST files, corrupted MANIFEST,
+  /// or other recoverable corruption. Use [Database.repairRocksDB] to
+  /// attempt recovery.
+  corrupted,
+
+  /// Database has severe corruption that may not be repairable.
+  ///
+  /// This typically indicates missing CURRENT file, no MANIFEST files,
+  /// or fundamental structure issues. Consider restoring from backup
+  /// or starting fresh.
+  severelyCorrupted,
+
+  /// An error occurred during verification.
+  ///
+  /// This may indicate lock issues, permission problems, or other
+  /// system-level errors. Check error logs for details.
+  error,
 }
