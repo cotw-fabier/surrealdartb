@@ -238,6 +238,15 @@ class TableSchema {
         for (final entry in fieldsInfo.entries) {
           final fieldName = entry.key;
           final fieldDef = entry.value as String;
+
+          // Skip nested field paths (e.g., 'tags.*', 'metadata.name')
+          // SurrealDB generates these for array/object element type definitions,
+          // but they're not part of the user-defined schema. We only track
+          // top-level fields; nested types are encoded in the parent field's type.
+          if (fieldName.contains('.')) {
+            continue;
+          }
+
           fields[fieldName] = FieldSchema.parse(fieldName, fieldDef);
         }
       }
