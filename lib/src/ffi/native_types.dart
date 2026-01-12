@@ -182,6 +182,17 @@ typedef NativeDbAuthenticate = Int32 Function(
 /// Returns 0 on success, negative error code on failure.
 typedef NativeDbInvalidate = Int32 Function(Pointer<NativeDatabase> handle);
 
+/// Type definition for refresh token operation.
+///
+/// Refreshes the current authentication token using a valid JWT token.
+/// Returns a new JWT token JSON on success, null on failure.
+///
+/// New in SurrealDB 3.0.
+typedef NativeDbRefreshToken = Pointer<Utf8> Function(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> currentToken,
+);
+
 /// Type definition for getting query results.
 ///
 /// Returns a JSON string containing query results.

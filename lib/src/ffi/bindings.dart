@@ -457,6 +457,36 @@ external int dbAuthenticate(
 @Native<NativeDbInvalidate>(symbol: 'db_invalidate', assetId: 'package:surrealdartb/surrealdartb_bindings')
 external int dbInvalidate(Pointer<NativeDatabase> handle);
 
+/// Refreshes the current authentication token.
+///
+/// This function uses a valid JWT token to obtain a new access token.
+/// The current token must still be valid (not expired) for refresh to succeed.
+///
+/// Parameters:
+/// - [handle] - Database handle
+/// - [currentToken] - Current JWT token to refresh
+///
+/// Returns: Pointer to C string containing new JWT token JSON, or nullptr on error
+///
+/// The returned JSON has the format:
+/// ```json
+/// {
+///   "token": "new_access_token",
+///   "refresh": "new_refresh_token" // optional, may be null
+/// }
+/// ```
+///
+/// New in SurrealDB 3.0.
+///
+/// Embedded mode limitations:
+/// - Token refresh may have limited functionality in embedded mode
+/// - Authentication is typically bypassed in embedded mode
+@Native<NativeDbRefreshToken>(symbol: 'db_refresh_token', assetId: 'package:surrealdartb/surrealdartb_bindings')
+external Pointer<Utf8> dbRefreshToken(
+  Pointer<NativeDatabase> handle,
+  Pointer<Utf8> currentToken,
+);
+
 //
 // Error Handling
 //

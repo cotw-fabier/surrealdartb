@@ -304,6 +304,115 @@ pub extern "C" fn db_invalidate(handle: *mut Database) -> i32 {
     }
 }
 
+/// Refresh the current authentication token
+///
+/// # Arguments
+/// * `handle` - Pointer to Database instance
+/// * `current_token` - C string containing the current JWT token to refresh
+///
+/// # Returns
+/// Pointer to C string containing new JWT token JSON, or null on failure
+///
+/// # Safety
+/// - handle must be a valid pointer obtained from db_new()
+/// - current_token must be a valid null-terminated C string
+/// - Returned pointer must be freed via free_string()
+/// - Passing null for either parameter returns null
+///
+/// # Note
+/// Requires a valid JWT token obtained from db_signin or db_signup.
+/// The current token must still be valid (not expired) for refresh to succeed.
+///
+/// # New in SurrealDB 3.0
+/// This function uses the new refresh token support added in SurrealDB 3.0.0-beta.
+///
+/// # Embedded Mode Limitations
+/// Token refresh has limited functionality in embedded mode. In embedded mode,
+/// authentication is typically bypassed, so this function may return an error
+/// indicating that refresh is not supported.
+#[no_mangle]
+pub extern "C" fn db_refresh_token(handle: *mut Database, current_token: *const c_char) -> *mut c_char {
+    match panic::catch_unwind(|| {
+        if handle.is_null() {
+            set_last_error("Database handle cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        if current_token.is_null() {
+            set_last_error("Current token cannot be null");
+            return std::ptr::null_mut();
+        }
+
+        let token_str = unsafe {
+            match std::ffi::CStr::from_ptr(current_token).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    set_last_error("Invalid UTF-8 in current token");
+                    return std::ptr::null_mut();
+                }
+            }
+        };
+
+        // Validate token is not empty
+        if token_str.trim().is_empty() {
+            set_last_error("Current token cannot be empty");
+            return std::ptr::null_mut();
+        }
+
+        let db = unsafe { &mut *handle };
+        let runtime = get_runtime();
+
+        // In SurrealDB 3.0, refresh is done via db.authenticate(token).refresh()
+        // For embedded mode, this may not be fully functional
+        match runtime.block_on(async {
+            use surrealdb::opt::auth::Token;
+
+            // Parse the token
+            let token = Token::from(token_str.to_string());
+
+            // Use authenticate with refresh mode
+            db.inner.authenticate(token).refresh().await
+        }) {
+            Ok(new_token) => {
+                // Extract the access token string
+                let token_str = new_token.access.into_insecure_token();
+                let refresh_token = new_token.refresh.map(|r| r.into_insecure_token());
+
+                let jwt_response = serde_json::json!({
+                    "token": token_str,
+                    "refresh": refresh_token
+                });
+
+                match serde_json::to_string(&jwt_response) {
+                    Ok(json_str) => {
+                        match std::ffi::CString::new(json_str) {
+                            Ok(c_str) => c_str.into_raw(),
+                            Err(_) => {
+                                set_last_error("Failed to create C string from JWT");
+                                std::ptr::null_mut()
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        set_last_error(&format!("Failed to serialize JWT: {}", e));
+                        std::ptr::null_mut()
+                    }
+                }
+            }
+            Err(e) => {
+                set_last_error(&format!("Token refresh failed: {}. Note: Token refresh may have limited functionality in embedded mode.", e));
+                std::ptr::null_mut()
+            }
+        }
+    }) {
+        Ok(result) => result,
+        Err(_) => {
+            set_last_error("Panic occurred in db_refresh_token");
+            std::ptr::null_mut()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
