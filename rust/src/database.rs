@@ -4,7 +4,7 @@ use surrealdb::Surreal;
 use surrealdb::engine::any::{Any, connect};
 use crate::error::set_last_error;
 use crate::runtime::get_runtime;
-use crate::connection_registry::{extract_rocksdb_path, register_connection, unregister_connection, close_existing_connection};
+use crate::connection_registry::{extract_rocksdb_path, register_connection, unregister_connection, get_or_reuse_connection};
 use log::{info, debug, warn, error};
 
 /// Opaque handle for SurrealDB database instance
@@ -54,15 +54,16 @@ pub extern "C" fn db_new(endpoint: *const c_char) -> *mut Database {
             }
         };
 
-        // For RocksDB endpoints, check if there's an existing connection and close it.
+        // For RocksDB endpoints, check if there's an existing connection we can reuse.
         // This handles the Flutter Hot Restart scenario where the old Dart isolate is gone
-        // but the Rust-side connection is still holding the file lock.
+        // but the Rust-side connection is still active and holding the file lock.
+        // Instead of closing and reopening (which has timing issues), we reuse the connection.
         let rocksdb_path = extract_rocksdb_path(endpoint_str);
         if let Some(ref path) = rocksdb_path {
-            info!("RocksDB endpoint detected, checking for existing connection at: {}", path);
-            close_existing_connection(path);
-            // Small delay to ensure RocksDB lock is fully released
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            if let Some(existing_handle) = get_or_reuse_connection(path) {
+                info!("Reusing existing RocksDB connection for path: {}", path);
+                return existing_handle;
+            }
         }
 
         let runtime = get_runtime();
@@ -488,63 +489,80 @@ pub extern "C" fn db_rollback(handle: *mut Database) -> i32 {
 ///
 /// # Safety
 /// - handle should be a valid pointer obtained from db_new()
-/// - After calling this function, the handle is invalid and must not be used
+/// - After calling this function, the handle may be invalid (if ref_count reaches 0)
 /// - Passing null is safe and does nothing
-/// - Do not call this function twice on the same pointer
 ///
 /// # Implementation Details
-/// This function performs graceful shutdown by:
-/// 1. Taking ownership of the Database from the raw pointer
-/// 2. Giving the async runtime time to flush pending operations
-/// 3. Explicitly dropping the database to trigger cleanup
-/// 4. Allowing the runtime to process any final cleanup tasks
+/// This function uses reference counting for connection reuse:
+/// 1. Decrements the reference count for this connection
+/// 2. If ref_count > 0, connection stays alive (other references exist)
+/// 3. If ref_count == 0, performs graceful shutdown
 ///
-/// This ensures RocksDB file locks and other resources are properly released
-/// before the function returns, preventing "lock held by current process" errors
-/// when reconnecting to the same database path.
+/// This supports Flutter Hot Restart by allowing connection reuse:
+/// - Hot restart creates a new Dart Database object with the same path
+/// - db_new() returns the existing handle (incrementing ref_count)
+/// - When old Dart object is GC'd, its finalizer calls db_close()
+/// - db_close() decrements ref_count but doesn't actually close (ref_count > 0)
+/// - Connection stays alive for the new Dart object to use
 #[no_mangle]
 pub extern "C" fn db_close(handle: *mut Database) {
     let _ = panic::catch_unwind(|| {
         if !handle.is_null() {
-            unsafe {
-                // Take ownership of the Database
-                let db = Box::from_raw(handle);
+            // First, check if we should actually close by looking at ref_count
+            // We need to read the endpoint before potentially dropping
+            let endpoint = unsafe { (*handle).endpoint.clone() };
 
-                // Unregister from the connection registry before closing
-                // This must happen before drop so the path is still available
-                if let Some(ref endpoint) = db.endpoint {
-                    if let Some(path) = extract_rocksdb_path(endpoint) {
-                        debug!("Unregistering connection for path: {}", path);
-                        unregister_connection(&path);
+            let should_close = if let Some(ref endpoint_str) = endpoint {
+                if let Some(path) = extract_rocksdb_path(endpoint_str) {
+                    // Decrement ref_count and check if we should close
+                    let close = unregister_connection(&path);
+                    if close {
+                        info!("Closing connection for path: {} (ref_count reached 0)", path);
+                    } else {
+                        info!("Skipping close for path: {} (still has references)", path);
                     }
+                    close
+                } else {
+                    true // Non-RocksDB, always close
                 }
+            } else {
+                true // No endpoint, always close
+            };
 
-                // Get the runtime to ensure async cleanup can complete
-                let runtime = get_runtime();
+            if should_close {
+                unsafe {
+                    // Take ownership of the Database
+                    let db = Box::from_raw(handle);
 
-                // Explicitly drop the database in an async context
-                // This ensures any background tasks spawned by the drop handler
-                // have a chance to run before we return
-                let _ = runtime.block_on(async {
-                    // Drop the database first
-                    drop(db);
+                    // Get the runtime to ensure async cleanup can complete
+                    let runtime = get_runtime();
 
-                    // Critical: Give the runtime substantial time to process cleanup tasks
-                    // SurrealDB's RocksDB backend spawns background tasks for shutdown
-                    // that must complete before the file lock is released
-                    //
-                    // We use a long delay because:
-                    // 1. RocksDB needs to flush WAL and memtables
-                    // 2. Background cleanup tasks need to finish
-                    // 3. File system locks take time to release
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    // Explicitly drop the database in an async context
+                    // This ensures any background tasks spawned by the drop handler
+                    // have a chance to run before we return
+                    let _ = runtime.block_on(async {
+                        // Drop the database first
+                        drop(db);
 
-                    // Yield multiple times to ensure all pending tasks complete
-                    for _ in 0..10 {
-                        tokio::task::yield_now().await;
-                    }
-                });
+                        // Critical: Give the runtime substantial time to process cleanup tasks
+                        // SurrealDB's RocksDB backend spawns background tasks for shutdown
+                        // that must complete before the file lock is released
+                        //
+                        // We use a long delay because:
+                        // 1. RocksDB needs to flush WAL and memtables
+                        // 2. Background cleanup tasks need to finish
+                        // 3. File system locks take time to release
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                        // Yield multiple times to ensure all pending tasks complete
+                        for _ in 0..10 {
+                            tokio::task::yield_now().await;
+                        }
+                    });
+                }
             }
+            // If should_close is false, we just return without closing.
+            // The connection stays alive in the registry for reuse.
         }
     });
 }
