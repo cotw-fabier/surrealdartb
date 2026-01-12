@@ -1,6 +1,6 @@
 use surrealdb::Surreal;
 use surrealdb::engine::any::connect;
-use surrealdb::sql::Value;
+use surrealdb::types::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -137,11 +137,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "DEFINE INDEX hnsw_idx ON vectors FIELDS vec HNSW DIMENSION 3 DIST EUCLIDEAN;",
     ).await;
 
-    // Test M-Tree index
+    // Test another HNSW index with different params (MTREE was removed in SurrealDB 3.0)
     test_function(
         &db,
-        "M-Tree index creation",
-        "DEFINE INDEX mtree_idx ON vectors FIELDS vec MTREE DIMENSION 3 DIST COSINE;",
+        "HNSW index with COSINE",
+        "DEFINE INDEX hnsw_cosine_idx ON vectors FIELDS vec HNSW DIMENSION 3 DIST COSINE;",
     ).await;
 
     println!("\n=================================================");

@@ -23,7 +23,6 @@ use std::ptr;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
 use serde_json::{json, Value};
-use surrealdb::sql::Thing;
 use crate::database::Database;
 use crate::error::set_last_error;
 use crate::runtime::get_runtime;
@@ -120,17 +119,17 @@ pub extern "C" fn db_select_live(
                     while let Some(notification) = stream.next().await {
                         // Convert notification to our format
                         let action = match notification.action {
-                            surrealdb::Action::Create => "create",
-                            surrealdb::Action::Update => "update",
-                            surrealdb::Action::Delete => "delete",
-                            _ => "unknown",
+                            surrealdb::types::Action::Create => "create",
+                            surrealdb::types::Action::Update => "update",
+                            surrealdb::types::Action::Delete => "delete",
+                            surrealdb::types::Action::Killed => "killed",
                         };
 
-                        // Convert the notification data to JSON
-                        let data_json = match crate::query::surreal_value_to_json(&notification.data) {
+                        // Convert the notification result to JSON (renamed from 'data' in SurrealDB 3.0)
+                        let data_json = match crate::query::surreal_value_to_json(&notification.result) {
                             Ok(json) => json,
                             Err(e) => {
-                                eprintln!("Failed to convert notification data to JSON: {}", e);
+                                eprintln!("Failed to convert notification result to JSON: {}", e);
                                 json!({"error": format!("Conversion failed: {}", e)})
                             }
                         };
