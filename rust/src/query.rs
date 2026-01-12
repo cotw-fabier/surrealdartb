@@ -6,6 +6,116 @@ use crate::error::set_last_error;
 use crate::runtime::get_runtime;
 use crate::connection_registry::is_handle_valid;
 
+/// Check if a string looks like an ISO 8601 datetime.
+///
+/// Matches patterns like:
+/// - 2026-01-11T21:27:37
+/// - 2026-01-11T21:27:37.968585
+/// - 2026-01-11T21:27:37Z
+/// - 2026-01-11T21:27:37+00:00
+///
+/// Uses simple character checks instead of regex for performance.
+fn is_iso8601_datetime(s: &str) -> bool {
+    let bytes = s.as_bytes();
+
+    // Minimum length: YYYY-MM-DDTHH:MM:SS (19 chars)
+    if bytes.len() < 19 {
+        return false;
+    }
+
+    // Check fixed positions: YYYY-MM-DDTHH:MM:SS
+    // Position:              0123456789...
+    bytes[4] == b'-' &&
+    bytes[7] == b'-' &&
+    bytes[10] == b'T' &&
+    bytes[13] == b':' &&
+    bytes[16] == b':' &&
+    bytes[0..4].iter().all(|b| b.is_ascii_digit()) &&
+    bytes[5..7].iter().all(|b| b.is_ascii_digit()) &&
+    bytes[8..10].iter().all(|b| b.is_ascii_digit()) &&
+    bytes[11..13].iter().all(|b| b.is_ascii_digit()) &&
+    bytes[14..16].iter().all(|b| b.is_ascii_digit()) &&
+    bytes[17..19].iter().all(|b| b.is_ascii_digit())
+}
+
+/// Check if a datetime string has a timezone suffix (Z or +/-HH:MM)
+fn has_timezone_suffix(s: &str) -> bool {
+    s.ends_with('Z') ||
+    s.ends_with("+00:00") ||
+    s.ends_with("-00:00") ||
+    // Check for other timezone offsets like +05:30, -08:00, etc.
+    (s.len() >= 6 && {
+        let suffix = &s[s.len()-6..];
+        (suffix.starts_with('+') || suffix.starts_with('-')) &&
+        suffix.chars().skip(1).take(2).all(|c| c.is_ascii_digit()) &&
+        suffix.chars().nth(3) == Some(':') &&
+        suffix.chars().skip(4).take(2).all(|c| c.is_ascii_digit())
+    })
+}
+
+/// Ensure datetime string has a timezone suffix.
+/// If no timezone is present, append 'Z' (UTC).
+fn ensure_timezone(s: &str) -> String {
+    if has_timezone_suffix(s) {
+        s.to_string()
+    } else {
+        format!("{}Z", s)
+    }
+}
+
+/// Convert a serde_json::Value to a SurrealQL value string.
+///
+/// This handles datetime strings specially, converting them to d"..." literals
+/// so that SCHEMAFULL tables with TYPE datetime fields accept them properly.
+fn json_value_to_surreal_value(value: &Value) -> String {
+    match value {
+        Value::Null => "NONE".to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => {
+            // Check if this looks like an ISO 8601 datetime
+            if is_iso8601_datetime(s) {
+                // Use datetime literal syntax with timezone
+                // SurrealDB requires timezone suffix on datetime literals
+                let datetime_with_tz = ensure_timezone(s);
+                format!("d\"{}\"", datetime_with_tz)
+            } else {
+                // Escape single quotes and use string syntax
+                format!("'{}'", s.replace('\'', "\\'").replace('\\', "\\\\"))
+            }
+        },
+        Value::Array(arr) => {
+            let items: Vec<String> = arr.iter()
+                .map(|v| json_value_to_surreal_value(v))
+                .collect();
+            format!("[{}]", items.join(", "))
+        },
+        Value::Object(obj) => {
+            let fields: Vec<String> = obj.iter()
+                .map(|(k, v)| format!("{}: {}", k, json_value_to_surreal_value(v)))
+                .collect();
+            format!("{{ {} }}", fields.join(", "))
+        },
+    }
+}
+
+/// Convert a JSON object to a SurrealQL SET clause string.
+///
+/// This properly handles datetime strings by converting them to d"..." literals.
+/// For example: `{"name": "test", "created": "2026-01-11T12:00:00Z"}` becomes
+/// `name = 'test', created = d"2026-01-11T12:00:00Z"`
+fn json_to_set_clause(data: &Value) -> Result<String, String> {
+    match data {
+        Value::Object(obj) => {
+            let fields: Vec<String> = obj.iter()
+                .map(|(k, v)| format!("{} = {}", k, json_value_to_surreal_value(v)))
+                .collect();
+            Ok(fields.join(", "))
+        },
+        _ => Err("Data must be a JSON object".to_string()),
+    }
+}
+
 /// Opaque handle for query response
 ///
 /// This type is never constructed in Dart; it only exists as a pointer.
@@ -732,8 +842,8 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
             }
         };
 
-        // Validate JSON
-        let _: Value = match serde_json::from_str(data_str) {
+        // Parse and validate JSON
+        let json_data: Value = match serde_json::from_str(data_str) {
             Ok(v) => v,
             Err(e) => {
                 set_last_error(&format!("Invalid JSON in data: {}", e));
@@ -741,11 +851,22 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
             }
         };
 
+        // Convert JSON to SET clause with proper datetime handling
+        // This ensures ISO 8601 datetime strings are converted to d"..." literals
+        // which SCHEMAFULL tables with TYPE datetime fields require
+        let set_clause = match json_to_set_clause(&json_data) {
+            Ok(clause) => clause,
+            Err(e) => {
+                set_last_error(&format!("Failed to convert data to SET clause: {}", e));
+                return std::ptr::null_mut();
+            }
+        };
+
         let db = unsafe { &mut *handle };
         let runtime = get_runtime();
 
-        // Use query() with CREATE statement for consistent Value handling
-        let query_sql = format!("CREATE {} CONTENT {}", table_str, data_str);
+        // Use CREATE ... SET instead of CREATE ... CONTENT for proper datetime handling
+        let query_sql = format!("CREATE {} SET {}", table_str, set_clause);
 
         match runtime.block_on(async {
             db.inner.query(&query_sql).await
@@ -859,8 +980,8 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
             }
         };
 
-        // Validate JSON
-        let _: Value = match serde_json::from_str(data_str) {
+        // Parse and validate JSON
+        let json_data: Value = match serde_json::from_str(data_str) {
             Ok(v) => v,
             Err(e) => {
                 set_last_error(&format!("Invalid JSON in data: {}", e));
@@ -868,11 +989,20 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
             }
         };
 
+        // Convert JSON to SET clause with proper datetime handling
+        let set_clause = match json_to_set_clause(&json_data) {
+            Ok(clause) => clause,
+            Err(e) => {
+                set_last_error(&format!("Failed to convert data to SET clause: {}", e));
+                return std::ptr::null_mut();
+            }
+        };
+
         let db = unsafe { &mut *handle };
         let runtime = get_runtime();
 
-        // Use query() with UPDATE statement for consistent Value handling
-        let query_sql = format!("UPDATE {} CONTENT {}", resource_str, data_str);
+        // Use UPDATE ... SET instead of UPDATE ... CONTENT for proper datetime handling
+        let query_sql = format!("UPDATE {} SET {}", resource_str, set_clause);
 
         match runtime.block_on(async {
             db.inner.query(&query_sql).await
