@@ -216,15 +216,18 @@ class IndexDefinition {
     }
   }
 
-  /// Generates the SurrealQL DEFINE INDEX statement.
+  /// Generates the SurrealQL DEFINE INDEX OVERWRITE statement.
   ///
   /// Creates the DDL statement for creating this vector index in SurrealDB.
+  /// Uses OVERWRITE to make migrations idempotent - if the index already
+  /// exists, it will be updated rather than causing an error.
+  ///
   /// Automatically resolves [IndexType.auto] to a concrete type based on
   /// heuristics if needed.
   ///
   /// The generated statement follows this format:
   /// ```sql
-  /// DEFINE INDEX [indexName] ON [tableName] FIELDS [fieldName]
+  /// DEFINE INDEX OVERWRITE [indexName] ON [tableName] FIELDS [fieldName]
   /// [MTREE|HNSW|FLAT] DISTANCE [metric] DIMENSION [n]
   /// [M [value]] [EFC [value]] [CAPACITY [value]]
   /// ```
@@ -232,7 +235,7 @@ class IndexDefinition {
   /// Parameters:
   /// - [datasetSize]: Estimated dataset size for auto-selection (optional)
   ///
-  /// Returns the complete DEFINE INDEX statement as a string.
+  /// Returns the complete DEFINE INDEX OVERWRITE statement as a string.
   ///
   /// Throws [ArgumentError] if validation fails.
   ///
@@ -249,7 +252,7 @@ class IndexDefinition {
   /// );
   ///
   /// print(index.toSurrealQL());
-  /// // Output: DEFINE INDEX idx_embedding ON docs FIELDS embedding
+  /// // Output: DEFINE INDEX OVERWRITE idx_embedding ON docs FIELDS embedding
   /// //         MTREE DISTANCE COSINE DIMENSION 768 CAPACITY 40
   /// ```
   String toSurrealQL({int datasetSize = 0}) {
@@ -267,8 +270,9 @@ class IndexDefinition {
     }
 
     // Build base statement
+    // Use OVERWRITE to make migrations idempotent
     final buffer = StringBuffer();
-    buffer.write('DEFINE INDEX $indexName ON $tableName FIELDS $fieldName ');
+    buffer.write('DEFINE INDEX OVERWRITE $indexName ON $tableName FIELDS $fieldName ');
     buffer.write('$indexTypeKeyword DISTANCE ${distanceMetric.toSurrealQLFunction().toUpperCase()} ');
     buffer.write('DIMENSION $dimensions');
 

@@ -257,6 +257,8 @@ class DdlGenerator {
   /// // Output: DEFINE TABLE users SCHEMAFULL;
   /// ```
   String generateDefineTable(TableStructure table) {
+    // Note: Don't use OVERWRITE for tables - it can break field types
+    // (see SurrealDB issue #5602). Tables are only created once anyway.
     return 'DEFINE TABLE ${table.tableName} SCHEMAFULL';
   }
 
@@ -297,11 +299,14 @@ class DdlGenerator {
   /// Creates a SurrealQL statement to define a field with its type,
   /// constraints (ASSERT), default value, and optionality.
   ///
+  /// Uses OVERWRITE to make migrations idempotent - if the field already
+  /// exists, it will be updated rather than causing an error.
+  ///
   /// [tableName] - The name of the table
   /// [fieldName] - The name of the field
   /// [fieldDef] - The field definition
   ///
-  /// Returns a DEFINE FIELD statement.
+  /// Returns a DEFINE FIELD OVERWRITE statement.
   ///
   /// Example:
   /// ```dart
@@ -311,7 +316,7 @@ class DdlGenerator {
   ///   defaultValue: 0,
   /// );
   /// print(generator.generateDefineField('users', 'age', fieldDef));
-  /// // Output: DEFINE FIELD age ON users TYPE int ASSERT $value >= 0 DEFAULT 0;
+  /// // Output: DEFINE FIELD OVERWRITE age ON users TYPE int ASSERT $value >= 0 DEFAULT 0;
   /// ```
   String generateDefineField(
     String tableName,
@@ -320,7 +325,8 @@ class DdlGenerator {
   ) {
     final buffer = StringBuffer();
 
-    buffer.write('DEFINE FIELD $fieldName ON $tableName TYPE ');
+    // Use OVERWRITE to make migrations idempotent
+    buffer.write('DEFINE FIELD OVERWRITE $fieldName ON $tableName TYPE ');
 
     // Generate type string
     final typeStr = _generateTypeString(fieldDef.type, fieldDef.optional);
@@ -380,19 +386,23 @@ class DdlGenerator {
   /// Creates a SurrealQL statement to define an index on a field.
   /// The index name follows the convention: `idx_{tableName}_{fieldName}`.
   ///
+  /// Uses OVERWRITE to make migrations idempotent - if the index already
+  /// exists, it will be updated rather than causing an error.
+  ///
   /// [tableName] - The name of the table
   /// [fieldName] - The name of the field to index
   ///
-  /// Returns a DEFINE INDEX statement.
+  /// Returns a DEFINE INDEX OVERWRITE statement.
   ///
   /// Example:
   /// ```dart
   /// print(generator.generateDefineIndex('users', 'email'));
-  /// // Output: DEFINE INDEX idx_users_email ON users FIELDS email;
+  /// // Output: DEFINE INDEX OVERWRITE idx_users_email ON users FIELDS email;
   /// ```
   String generateDefineIndex(String tableName, String fieldName) {
     final indexName = 'idx_${tableName}_$fieldName';
-    return 'DEFINE INDEX $indexName ON $tableName FIELDS $fieldName';
+    // Use OVERWRITE to make migrations idempotent
+    return 'DEFINE INDEX OVERWRITE $indexName ON $tableName FIELDS $fieldName';
   }
 
   /// Generates DEFINE INDEX statements for all vector indexes in a table.

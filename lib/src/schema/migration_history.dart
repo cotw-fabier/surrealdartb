@@ -76,34 +76,35 @@ class MigrationHistory {
       }
 
       // Create the _migrations table
+      // Note: Don't use OVERWRITE for tables - it can break field types
       await db.queryQL('DEFINE TABLE _migrations SCHEMAFULL');
 
-      // Define fields
+      // Define fields (use OVERWRITE for idempotency)
       await db.queryQL(
-        'DEFINE FIELD migration_id ON _migrations TYPE string',
+        'DEFINE FIELD OVERWRITE migration_id ON _migrations TYPE string',
       );
       await db.queryQL(
-        'DEFINE FIELD applied_at ON _migrations TYPE datetime',
+        'DEFINE FIELD OVERWRITE applied_at ON _migrations TYPE datetime',
       );
       await db.queryQL(
-        'DEFINE FIELD status ON _migrations TYPE string',
+        'DEFINE FIELD OVERWRITE status ON _migrations TYPE string',
       );
       await db.queryQL(
-        'DEFINE FIELD schema_snapshot ON _migrations TYPE object',
+        'DEFINE FIELD OVERWRITE schema_snapshot ON _migrations TYPE object',
       );
       await db.queryQL(
-        'DEFINE FIELD changes_applied ON _migrations TYPE array',
+        'DEFINE FIELD OVERWRITE changes_applied ON _migrations TYPE array',
       );
       await db.queryQL(
-        'DEFINE FIELD error_message ON _migrations TYPE option<string>',
+        'DEFINE FIELD OVERWRITE error_message ON _migrations TYPE option<string>',
       );
       await db.queryQL(
-        'DEFINE FIELD ddl_statements ON _migrations TYPE array',
+        'DEFINE FIELD OVERWRITE ddl_statements ON _migrations TYPE array',
       );
 
       // Create index on migration_id for faster lookups
       await db.queryQL(
-        'DEFINE INDEX idx_migration_id ON _migrations FIELDS migration_id',
+        'DEFINE INDEX OVERWRITE idx_migration_id ON _migrations FIELDS migration_id',
       );
     } catch (e) {
       throw DatabaseException(
