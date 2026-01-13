@@ -479,6 +479,9 @@ String _formatValue(dynamic value) {
   if (value is bool || value is num) {
     return value.toString();
   }
+  if (value is DateTime) {
+    return 'd"${value.toUtc().toIso8601String()}"';
+  }
   if (value == null) {
     return 'NONE';
   }

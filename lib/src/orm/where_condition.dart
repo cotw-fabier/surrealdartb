@@ -146,6 +146,9 @@ class EqualsCondition<T> extends WhereCondition {
     if (val is bool || val is num) {
       return val.toString();
     }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
+    }
     return "'$val'";
   }
 
@@ -185,6 +188,9 @@ class BetweenCondition<T> extends WhereCondition {
     if (val is bool || val is num) {
       return val.toString();
     }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
+    }
     return "'$val'";
   }
 
@@ -211,6 +217,9 @@ class GreaterThanCondition<T> extends WhereCondition {
     }
     if (val is bool || val is num) {
       return val.toString();
+    }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
     }
     return "'$val'";
   }
@@ -239,6 +248,9 @@ class LessThanCondition<T> extends WhereCondition {
     if (val is bool || val is num) {
       return val.toString();
     }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
+    }
     return "'$val'";
   }
 
@@ -266,6 +278,9 @@ class GreaterOrEqualCondition<T> extends WhereCondition {
     if (val is bool || val is num) {
       return val.toString();
     }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
+    }
     return "'$val'";
   }
 
@@ -292,6 +307,9 @@ class LessOrEqualCondition<T> extends WhereCondition {
     }
     if (val is bool || val is num) {
       return val.toString();
+    }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
     }
     return "'$val'";
   }
@@ -401,6 +419,9 @@ class InListCondition<T> extends WhereCondition {
     if (val is bool || val is num) {
       return val.toString();
     }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
+    }
     return "'$val'";
   }
 
@@ -427,6 +448,9 @@ class NotEqualsCondition<T> extends WhereCondition {
     }
     if (val is bool || val is num) {
       return val.toString();
+    }
+    if (val is DateTime) {
+      return 'd"${val.toUtc().toIso8601String()}"';
     }
     return "'$val'";
   }
