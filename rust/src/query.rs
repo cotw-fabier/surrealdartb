@@ -63,6 +63,31 @@ fn ensure_timezone(s: &str) -> String {
     }
 }
 
+/// Escape a string for use in SurrealQL single-quoted string literals.
+///
+/// Handles all special characters that need escaping:
+/// - Backslash: \ -> \\
+/// - Single quote: ' -> \'
+/// - Newline: \n -> \\n (literal backslash-n)
+/// - Carriage return: \r -> \\r
+/// - Tab: \t -> \\t
+/// - Null byte: \0 -> \\0
+fn escape_surreal_string(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 16);
+    for c in s.chars() {
+        match c {
+            '\\' => result.push_str("\\\\"),
+            '\'' => result.push_str("\\'"),
+            '\n' => result.push_str("\\n"),
+            '\r' => result.push_str("\\r"),
+            '\t' => result.push_str("\\t"),
+            '\0' => result.push_str("\\0"),
+            _ => result.push(c),
+        }
+    }
+    result
+}
+
 /// Convert a serde_json::Value to a SurrealQL value string.
 ///
 /// This handles datetime strings specially, converting them to d"..." literals
@@ -80,8 +105,8 @@ fn json_value_to_surreal_value(value: &Value) -> String {
                 let datetime_with_tz = ensure_timezone(s);
                 format!("d\"{}\"", datetime_with_tz)
             } else {
-                // Escape single quotes and use string syntax
-                format!("'{}'", s.replace('\'', "\\'").replace('\\', "\\\\"))
+                // Use proper escaping for SurrealQL strings
+                format!("'{}'", escape_surreal_string(s))
             }
         },
         Value::Array(arr) => {
@@ -868,6 +893,14 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
         // Use CREATE ... SET instead of CREATE ... CONTENT for proper datetime handling
         let query_sql = format!("CREATE {} SET {}", table_str, set_clause);
 
+        // Debug: log the generated query (full query, split into chunks if needed)
+        eprintln!("[RUST db_create] Table: {}", table_str);
+        eprintln!("[RUST db_create] Query length: {} chars", query_sql.len());
+        // Print first 2000 chars to see more of the query
+        for (i, chunk) in query_sql.chars().collect::<Vec<_>>().chunks(500).enumerate() {
+            eprintln!("[RUST db_create] Query[{}]: {}", i, chunk.iter().collect::<String>());
+        }
+
         match runtime.block_on(async {
             db.inner.query(&query_sql).await
         }) {
@@ -876,10 +909,15 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
                 let mut errors = Vec::new();
 
                 let num_statements = response.num_statements();
+                eprintln!("[RUST db_create] Response has {} statements", num_statements);
 
                 // Extract errors
                 let error_map = response.take_errors();
+                if !error_map.is_empty() {
+                    eprintln!("[RUST db_create] Found {} errors in response", error_map.len());
+                }
                 for (idx, err) in error_map {
+                    eprintln!("[RUST db_create] SurrealDB error at statement {}: {}", idx, err);
                     errors.push(format!("Statement {}: {}", idx, err));
                 }
 
@@ -888,14 +926,19 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
                     match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
                             match surreal_value_to_json(&value) {
-                                Ok(json_value) => results.push(json_value),
+                                Ok(json_value) => {
+                                    eprintln!("[RUST db_create] Got result for statement {}", idx);
+                                    results.push(json_value);
+                                },
                                 Err(e) => {
+                                    eprintln!("[RUST db_create] Failed to convert result {}: {}", idx, e);
                                     errors.push(format!("Failed to convert result: {}", e));
                                     results.push(Value::Null);
                                 }
                             }
                         }
                         Err(e) => {
+                            eprintln!("[RUST db_create] Failed to extract result {}: {}", idx, e);
                             if !errors.iter().any(|err_msg| err_msg.contains(&format!("Statement {}:", idx))) {
                                 errors.push(format!("Failed to extract result: {}", e));
                             }
@@ -904,10 +947,12 @@ pub extern "C" fn db_create(handle: *mut Database, table: *const c_char, data: *
                     }
                 }
 
+                eprintln!("[RUST db_create] Returning {} results, {} errors", results.len(), errors.len());
                 let response_obj = Box::new(Response { results, errors });
                 Box::into_raw(response_obj)
             }
             Err(e) => {
+                eprintln!("[RUST db_create] Query execution error: {}", e);
                 set_last_error(&format!("Create failed: {}", e));
                 std::ptr::null_mut()
             }
@@ -1004,6 +1049,13 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
         // Use UPDATE ... SET instead of UPDATE ... CONTENT for proper datetime handling
         let query_sql = format!("UPDATE {} SET {}", resource_str, set_clause);
 
+        // Debug logging
+        eprintln!("[RUST db_update] Resource: {}", resource_str);
+        eprintln!("[RUST db_update] Query length: {} chars", query_sql.len());
+        // Print first 500 chars of query for debugging
+        let preview_len = std::cmp::min(500, query_sql.len());
+        eprintln!("[RUST db_update] Query preview: {}...", &query_sql[..preview_len]);
+
         match runtime.block_on(async {
             db.inner.query(&query_sql).await
         }) {
@@ -1012,10 +1064,12 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
                 let mut errors = Vec::new();
 
                 let num_statements = response.num_statements();
+                eprintln!("[RUST db_update] Response has {} statements", num_statements);
 
                 // Extract errors
                 let error_map = response.take_errors();
                 for (idx, err) in error_map {
+                    eprintln!("[RUST db_update] ERROR from SurrealDB - Statement {}: {}", idx, err);
                     errors.push(format!("Statement {}: {}", idx, err));
                 }
 
@@ -1023,6 +1077,7 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
                 for idx in 0..num_statements {
                     match response.take::<surrealdb::types::Value>(idx) {
                         Ok(value) => {
+                            eprintln!("[RUST db_update] Got result for statement {}", idx);
                             match surreal_value_to_json(&value) {
                                 Ok(json_value) => results.push(json_value),
                                 Err(e) => {
@@ -1032,6 +1087,7 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
                             }
                         }
                         Err(e) => {
+                            eprintln!("[RUST db_update] Failed to extract result {}: {}", idx, e);
                             if !errors.iter().any(|err_msg| err_msg.contains(&format!("Statement {}:", idx))) {
                                 errors.push(format!("Failed to extract result: {}", e));
                             }
@@ -1040,10 +1096,12 @@ pub extern "C" fn db_update(handle: *mut Database, resource: *const c_char, data
                     }
                 }
 
+                eprintln!("[RUST db_update] Returning {} results, {} errors", results.len(), errors.len());
                 let response_obj = Box::new(Response { results, errors });
                 Box::into_raw(response_obj)
             }
             Err(e) => {
+                eprintln!("[RUST db_update] Query execution error: {}", e);
                 set_last_error(&format!("Update failed: {}", e));
                 std::ptr::null_mut()
             }
