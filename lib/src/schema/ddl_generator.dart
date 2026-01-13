@@ -635,6 +635,11 @@ class DdlGenerator {
   /// Converts a SurrealType to its SurrealQL string representation.
   ///
   /// Uses pattern matching to handle all type variants.
+  ///
+  /// Note: ArrayType containing ObjectType uses 'array' without type parameter
+  /// to avoid SCHEMAFULL nested field validation issues. SurrealDB's SCHEMAFULL
+  /// mode requires explicit field definitions for nested object properties,
+  /// which isn't practical for dynamic/arbitrary object structures.
   String _surrealTypeToString(SurrealType type) {
     return switch (type) {
       StringType() => 'string',
@@ -642,10 +647,15 @@ class DdlGenerator {
       BoolType() => 'bool',
       DatetimeType() => 'datetime',
       DurationType() => 'duration',
+      // For array<object>, use 'any' to completely bypass nested validation
+      // SurrealDB SCHEMAFULL mode validates nested object properties recursively,
+      // so 'any' is the only way to accept arbitrary nested structures
+      ArrayType(elementType: ObjectType()) => 'any',
       ArrayType(elementType: final elemType, length: final len) => len != null
           ? 'array<${_surrealTypeToString(elemType)}, $len>'
           : 'array<${_surrealTypeToString(elemType)}>',
-      ObjectType() => 'object',
+      // Standalone object also uses 'any' to bypass nested validation
+      ObjectType() => 'any',
       RecordType(table: final tbl) => tbl != null ? 'record<$tbl>' : 'record',
       GeometryType() => 'geometry',
       VectorType(format: final fmt, dimensions: final dims) =>
